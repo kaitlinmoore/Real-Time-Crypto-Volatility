@@ -379,7 +379,7 @@ def main():
             'n_features': len(feature_cols)
         })
         mlflow.log_metrics({f'test_{k}': v for k, v in metrics.items()})
-        mlflow.sklearn.log_model(lr_model, artifact_path='model', input_example=X_train[:5])
+        mlflow.sklearn.log_model(lr_model, name='model', input_example=X_train[:5])
         
         # Save model.
         lr_path = output_dir / 'logistic_regression.pkl'
@@ -411,12 +411,12 @@ def main():
                 mlflow.log_params({
                     'model_type': 'xgboost',
                     'n_estimators': 100,
-                    'max_depth': 3,
+                    'max_depth': 4, # started at 6, down to 3, up to 4 - Trying grid search approach.
                     'learning_rate': 0.1,
                     'n_features': len(feature_cols)
                 })
                 mlflow.log_metrics({f'test_{k}': v for k, v in metrics.items()})
-                mlflow.sklearn.log_model(xgb_model, artifact_path='model', input_example=X_train[:5])
+                mlflow.sklearn.log_model(xgb_model, name='model', input_example=X_train[:5])
                 
                 # Save model.
                 xgb_path = output_dir / 'xgboost.pkl'

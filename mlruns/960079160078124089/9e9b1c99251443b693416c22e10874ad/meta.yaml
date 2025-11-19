@@ -1,0 +1,14 @@
+artifact_uri: file:///C:/CMU%20Projects/Operationalizing%20AI/rt_crypto_volatility/mlruns/960079160078124089/9e9b1c99251443b693416c22e10874ad/artifacts
+end_time: 1763497731021
+entry_point_name: ''
+experiment_id: '960079160078124089'
+lifecycle_stage: active
+run_id: 9e9b1c99251443b693416c22e10874ad
+run_name: xgboost
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1763497726663
+status: 3
+tags: []
+user_id: redsk

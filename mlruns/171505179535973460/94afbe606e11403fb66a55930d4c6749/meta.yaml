@@ -1,0 +1,14 @@
+artifact_uri: file:///C:/CMU%20Projects/Operationalizing%20AI/rt_crypto_volatility/mlruns/171505179535973460/94afbe606e11403fb66a55930d4c6749/artifacts
+end_time: 1763502750688
+entry_point_name: ''
+experiment_id: '171505179535973460'
+lifecycle_stage: active
+run_id: 94afbe606e11403fb66a55930d4c6749
+run_name: BTC-USD
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1763502747917
+status: 3
+tags: []
+user_id: redsk

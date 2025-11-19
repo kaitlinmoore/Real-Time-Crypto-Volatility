@@ -1,0 +1,54 @@
+# Kafka
+
+services:
+  kafka:
+    image: apache/kafka:latest
+    container_name: kafka
+    ports:
+      - "9092:9092" # exposed port for Python
+    environment:
+      KAFKA_NODE_ID: 1  # Kafka instance ID
+      KAFKA_PROCESS_ROLES: broker,controller # Can do both in KRaft
+      
+      # Network Config
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT # Unencrypted should be ok for local
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093 # <nodeID>@<HOST>.<PORT>
+      
+      # Replication - Only 1 Broker
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      
+      # Performance
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 3 # Starting with 3, not sure how many consumers yet.
+      
+      # Logs
+      KAFKA_LOG_RETENTION_HOURS: 168  # 1 week instead of default
+    
+    # Data Persistance
+    volumes:
+      - kafka-data:/var/lib/kafka/data # Windows folder:container folder
+
+# MLflow
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    container_name: mlflow
+    ports:
+      - "5000:5000" # Windows:container
+    
+    # Start tracking, allow remote access to talk to windows, create expected mlfuns dir.
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow.db --artifacts-destination /mlflow/mlruns --serve-artifacts
+    
+    # Data Persistance
+    volumes:
+      - mlflow-data:/mlflow
+
+# Data Persistance
+volumes:
+  kafka-data:
+  mlflow-data:

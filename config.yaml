@@ -1,0 +1,35 @@
+# Use double quotes for .yaml files.
+
+data:
+  product_ids:
+    prediction_targets:
+      - BTC-USD
+      - ETH-USD
+      - SOL-USD
+    
+    # The world is volatile. Stablecoins shouldn't show any significant volatility unless there is an anomalous market-threatening event.
+    # The chances of that, though small, do seem non-zero during my potential collection windows. So, gonna grab this just in case.
+    auxiliary_data:
+      - USDT-USD # Tether stablecoin
+  
+  url: "wss://ws-feed.exchange.coinbase.com"
+  
+kafka:
+  topics:
+    raw: "ticks.raw"
+    features: "ticks.features"
+  bootstrap_servers: "localhost:9092"
+
+model:
+  volatility_thresholds:
+    BTC-USD: 0.020
+    ETH-USD: 0.025
+    SOL-USD: 0.040
+    USDC-USD: 0.002
+  
+  prediction_window_seconds: 60
+  
+ingestion:
+  reconnect_delay: 5
+  heartbeat_interval: 30
+  hb_response_timeout: 10

@@ -1,0 +1,14 @@
+artifact_uri: file:///C:/CMU%20Projects/Operationalizing%20AI/rt_crypto_volatility/mlruns/171505179535973460/ee4add44c92946409ed3e5693406007d/artifacts
+end_time: 1763502754965
+entry_point_name: ''
+experiment_id: '171505179535973460'
+lifecycle_stage: active
+run_id: ee4add44c92946409ed3e5693406007d
+run_name: SOL-USD
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1763502753521
+status: 3
+tags: []
+user_id: redsk

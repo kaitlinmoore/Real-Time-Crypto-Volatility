@@ -1,0 +1,10 @@
+artifact_location: file:///C:/CMU%20Projects/Operationalizing%20AI/rt_crypto_volatility/mlruns/960079160078124089/models/m-e23121d9e8a14ab3a4b5a795466846ee/artifacts
+creation_timestamp: 1763497724552
+experiment_id: '960079160078124089'
+last_updated_timestamp: 1763497726657
+model_id: m-e23121d9e8a14ab3a4b5a795466846ee
+model_type: null
+name: model
+source_run_id: aa0c84ea1d2b447e9f5988d8d84a03b7
+status: 2
+status_message: null

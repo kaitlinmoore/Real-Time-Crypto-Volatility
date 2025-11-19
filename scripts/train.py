@@ -283,15 +283,14 @@ def main():
     )
 
     # Target feature selection based on feature importance check. 
-    top_features = [
-        'w300_trade_imbalance', 'w900_tick_interval_std', 'w900_trade_volume',
-        'w300_spread_mean', 'w300_spread_std', 'w60_return_kurt', 
-        'w60_avg_tick_interval', 'w60_price_max', 'w60_price_min',
-        'w900_return_mean', 'w300_price_range', 'w60_trade_imbalance',
-        'w900_return_kurt', 'hour_sin', 'w900_price_range', 'w900_return_skew',
-        'w900_price_mean', 'w300_tick_interval_std', 'w60_tick_rate',
-        'w300_return_skew'
-    ]
+    top_features = ['w60_spread_std', 'w300_spread_std', 'w30_spread_std', 'w60_spread_mean', 'w30_spread_mean',
+                    'w60_ob_microprice_mean', 'w900_spread_std', 'w60_ob_depth_imbalance_L1', 'w300_trade_imbalance',
+                    'w30_ob_microprice_mean', 'w30_ob_depth_imbalance_L1', 'w60_return_std', 'w60_volatility_lag1',
+                    'w300_spread_mean', 'w900_price_momentum', 'w60_trade_count', 'w60_tick_rate', 'w60_n_observations',
+                    'w300_price_momentum', 'w60_trade_imbalance', 'w30_volatility_lag1', 'w30_return_std', 'w900_trade_count',
+                    'w900_tick_rate', 'w900_n_observations', 'w30_price_std', 'w300_ob_microprice_mean', 'w30_price_range',
+                    'w60_price_std', 'w300_trade_count'
+                    ]
     
     # Get feature columns.
     if args.use_top_features:

@@ -39,3 +39,11 @@ Verification: I reviewed, tested, went back if there were still errors, and edit
 Prompt (summary): "Please review my EDA notebook and make recommendations. It is attached."
 Used in: eda.ipynb
 Verification: I reviewed, considered, and selected changes to make.
+
+Prompt (summary): "I have written this utilities file with some functions that I may need repeatedly. Do you have other recommendations that will be useful for this pipeline?"
+Used in: utilities.py
+Verification: I reviewed, considered, and selected changes to incorporate, though wound up not using many of them.
+
+Prompt (summary): "Please draft the logging functions for this code."
+Used in: train.py, train_new.py, ws_ingest
+Verification: I reviewed, tested, changed a lot of the formatting.

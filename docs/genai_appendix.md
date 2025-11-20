@@ -14,6 +14,10 @@ Prompt (summary): "Please review this drafted model card and provide feedback,"
 Used in: model_card.md
 Verification: I reviewed the feedback and incorporated some elements and rearranged.
 
+Prompt (summary): "Please review this drafted model card and provide feedback,"
+Used in: README.md
+Verification: I reviewed, heavily cut, and edited the response.
+
 **Code**
 
 Prompt (summary): "Here is my current code. I would like to improve performance time. Can you make optimization suggestions?"

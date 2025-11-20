@@ -56,6 +56,8 @@ def main():
                        help='Validation set ratio (default: 0.15)')
     parser.add_argument('--test-ratio', type=float, default=0.15,
                        help='Test set ratio (default: 0.15)')
+    parser.add_argument('--suffix', type=str, default=None,
+                       help='File suffix to append for sanity')
     
     args = parser.parse_args()
     
@@ -89,9 +91,9 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
     
     # Save splits.
-    train_path = out_dir / 'train.parquet'
-    val_path = out_dir / 'val.parquet'
-    test_path = out_dir / 'test.parquet'
+    train_path = out_dir / f'train{args.suffix}.parquet'
+    val_path = out_dir / f'val{args.suffix}.parquet'
+    test_path = out_dir / f'test{args.suffix}.parquet'
     
     train_df.to_parquet(train_path, index=False)
     val_df.to_parquet(val_path, index=False)

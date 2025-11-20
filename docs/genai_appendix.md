@@ -47,3 +47,7 @@ Verification: I reviewed, considered, and selected changes to incorporate, thoug
 Prompt (summary): "Please draft the logging functions for this code."
 Used in: train.py, train_new.py, ws_ingest
 Verification: I reviewed, tested, changed a lot of the formatting.
+
+Prompt (summary): "The tutorials I watched on evidently are from an older version. A lot of the API has changed. Can you help me update my attached script to follow the 0.7.16 standards?"
+Used in: generate_evidently_report_update.py
+Verification: I reviewed, tested, and incorporated edits.

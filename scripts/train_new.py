@@ -2,17 +2,22 @@ import argparse
 import json
 import pickle
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import mlflow
 import mlflow.sklearn
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
+    ConfusionMatrixDisplay,
     average_precision_score,
+    confusion_matrix,
     f1_score,
+    precision_recall_curve,
     precision_score,
     recall_score,
     roc_auc_score,
@@ -27,6 +32,13 @@ try:
 except ImportError:
     HAS_XGBOOST = False
     print('Warning: XGBoost not installed, skipping XGBoost model')
+
+try:
+    import lightgbm as lgb
+    HAS_LIGHTGBM = True
+except ImportError:
+    HAS_LIGHTGBM = False
+    print('Warning: LightGBM not installed, skipping LightGBM model')
 
 
 def load_data(train_path, val_path, test_path, exclude_products=None):
@@ -84,6 +96,8 @@ def prepare_features(df, feature_cols, scaler=None):
         X_scaled = scaler.fit_transform(X)
     else:
         X_scaled = scaler.transform(X)
+
+    X_scaled = pd.DataFrame(X_scaled, columns=feature_cols, index=X.index)
     
     return X_scaled, scaler
 
@@ -102,6 +116,126 @@ def compute_metrics(y_true, y_pred, y_prob):
     return metrics
 
 
+def log_data_info(train_df, val_df, test_df, y_train, y_val, y_test, feature_cols):
+    '''Log dataset information to MLflow.'''
+    
+    mlflow.log_params({
+        'train_samples': len(train_df),
+        'val_samples': len(val_df),
+        'test_samples': len(test_df),
+        'n_features': len(feature_cols),
+        'products': ','.join(sorted(train_df['product_id'].unique())),
+        'n_products': len(train_df['product_id'].unique()),
+    })
+    
+    mlflow.log_metrics({
+        'train_spike_rate': float(y_train.mean()),
+        'val_spike_rate': float(y_val.mean()),
+        'test_spike_rate': float(y_test.mean()),
+        'train_spikes': int(y_train.sum()),
+        'val_spikes': int(y_val.sum()),
+        'test_spikes': int(y_test.sum()),
+    })
+    
+    # Log time ranges if timestamp column exists.
+    if 'timestamp' in train_df.columns:
+        mlflow.log_params({
+            'train_start': str(train_df['timestamp'].min()),
+            'train_end': str(train_df['timestamp'].max()),
+            'test_start': str(test_df['timestamp'].min()),
+            'test_end': str(test_df['timestamp'].max()),
+        })
+
+
+def log_confusion_metrics(y_true, y_pred):
+    '''Log confusion matrix values to MLflow.'''
+    
+    tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+    
+    mlflow.log_metrics({
+        'test_true_positives': int(tp),
+        'test_false_positives': int(fp),
+        'test_true_negatives': int(tn),
+        'test_false_negatives': int(fn),
+        'test_specificity': tn / (tn + fp) if (tn + fp) > 0 else 0,
+    })
+
+
+def log_pr_curve(y_true, y_prob, output_dir, model_name):
+    '''Log precision-recall curve to MLflow.'''
+    
+    precision, recall, thresholds = precision_recall_curve(y_true, y_prob)
+    
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.plot(recall, precision, linewidth=2)
+    ax.set_xlabel('Recall', fontsize=12)
+    ax.set_ylabel('Precision', fontsize=12)
+    ax.set_title(f'Precision-Recall Curve - {model_name}', fontsize=14)
+    ax.grid(True, alpha=0.3)
+    
+    # Add PR-AUC annotation.
+    pr_auc = average_precision_score(y_true, y_prob)
+    ax.annotate(f'PR-AUC: {pr_auc:.4f}', xy=(0.6, 0.9), fontsize=11)
+    
+    filepath = output_dir / f'pr_curve_{model_name}.png'
+    fig.savefig(filepath, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    
+    mlflow.log_artifact(filepath)
+
+
+def log_confusion_matrix(y_true, y_pred, output_dir, model_name):
+    '''Log confusion matrix visualization to MLflow.'''
+    
+    cm = confusion_matrix(y_true, y_pred)
+    
+    fig, ax = plt.subplots(figsize=(8, 6))
+    disp = ConfusionMatrixDisplay(cm, display_labels=['No Spike', 'Spike'])
+    disp.plot(ax=ax, cmap='Blues')
+    ax.set_title(f'Confusion Matrix - {model_name}', fontsize=14)
+    
+    filepath = output_dir / f'confusion_matrix_{model_name}.png'
+    fig.savefig(filepath, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    
+    mlflow.log_artifact(filepath)
+
+
+def log_feature_importance(model, feature_cols, output_dir, model_name):
+    '''Log feature importance for tree-based models.'''
+    
+    if not hasattr(model, 'feature_importances_'):
+        return
+    
+    importance_df = pd.DataFrame({
+        'feature': feature_cols,
+        'importance': model.feature_importances_
+    }).sort_values('importance', ascending=False)
+    
+    # Save to CSV.
+    filepath = output_dir / f'feature_importance_{model_name}.csv'
+    importance_df.to_csv(filepath, index=False)
+    mlflow.log_artifact(filepath)
+    
+    # Log top 5 features as params.
+    for i, row in importance_df.head(5).iterrows():
+        mlflow.log_param(f'top_feature_{importance_df.index.get_loc(i)+1}', row['feature'])
+    
+    # Create visualization.
+    fig, ax = plt.subplots(figsize=(10, 8))
+    top_20 = importance_df.head(20)
+    ax.barh(top_20['feature'], top_20['importance'])
+    ax.set_xlabel('Importance', fontsize=12)
+    ax.set_title(f'Top 20 Feature Importances - {model_name}', fontsize=14)
+    ax.invert_yaxis()
+    
+    fig_path = output_dir / f'feature_importance_{model_name}.png'
+    fig.savefig(fig_path, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    
+    mlflow.log_artifact(fig_path)
+
+
 def train_baseline(train_df, val_df, feature_cols):
     '''Train baseline threshold model using volatility z-score.'''
     
@@ -112,7 +246,7 @@ def train_baseline(train_df, val_df, feature_cols):
     
     if vol_col not in train_df.columns:
         print(f'Error: {vol_col} not found in features')
-        return None
+        return None, None
     
     # Compute threshold on training data.
     train_vol = train_df[vol_col].fillna(0)
@@ -122,6 +256,7 @@ def train_baseline(train_df, val_df, feature_cols):
     # Try different z-score thresholds.
     best_threshold = 1.5
     best_pr_auc = 0
+    best_val_metrics = None
     
     for z_threshold in [1.0, 1.5, 2.0, 2.5, 3.0]:
         threshold = vol_mean + z_threshold * vol_std
@@ -138,22 +273,23 @@ def train_baseline(train_df, val_df, feature_cols):
         if pr_auc > best_pr_auc:
             best_pr_auc = pr_auc
             best_threshold = z_threshold
+            best_val_metrics = compute_metrics(y_true, y_pred, y_prob)
     
     print(f'Best z-score threshold: {best_threshold}')
     
-    # Final threshold
+    # Final threshold.
     threshold = vol_mean + best_threshold * vol_std
     
-    # Model parameters to save
+    # Model parameters to save.
     model_params = {
-        'vol_mean': vol_mean,
-        'vol_std': vol_std,
-        'z_threshold': best_threshold,
-        'threshold': threshold,
+        'vol_mean': float(vol_mean),
+        'vol_std': float(vol_std),
+        'z_threshold': float(best_threshold),
+        'threshold': float(threshold),
         'feature_col': vol_col
     }
     
-    return model_params
+    return model_params, best_val_metrics
 
 
 def predict_baseline(df, model_params):
@@ -162,10 +298,10 @@ def predict_baseline(df, model_params):
     vol_col = model_params['feature_col']
     vol = df[vol_col].fillna(0)
     
-    # Binary prediction
+    # Binary prediction.
     y_pred = (vol >= model_params['threshold']).astype(int)
     
-    # Probability (normalized z-score)
+    # Probability (normalized z-score).
     y_prob = (vol - model_params['vol_mean']) / model_params['vol_std']
     y_prob = (y_prob - y_prob.min()) / (y_prob.max() - y_prob.min() + 1e-10)
     
@@ -185,7 +321,9 @@ def train_logistic_regression(X_train, y_train, X_val, y_val):
         random_state=23
     )
     
+    train_start = time.time()
     model.fit(X_train, y_train)
+    train_time = time.time() - train_start
     
     # Validate.
     y_prob = model.predict_proba(X_val)[:, 1]
@@ -194,14 +332,14 @@ def train_logistic_regression(X_train, y_train, X_val, y_val):
     metrics = compute_metrics(y_val, y_pred, y_prob)
     print(f'Validation PR-AUC: {metrics["pr_auc"]:.4f}')
     
-    return model
+    return model, metrics, train_time
 
 
 def train_xgboost(X_train, y_train, X_val, y_val):
     '''Train XGBoost model.'''
     
     if not HAS_XGBOOST:
-        return None
+        return None, None, 0
     
     print('Training XGBoost')
     
@@ -212,18 +350,20 @@ def train_xgboost(X_train, y_train, X_val, y_val):
     
     model = xgb.XGBClassifier(
         n_estimators=200,
-        max_depth=5,  # Reduce overfit by lowering or underfit by raising.
+        max_depth=5,
         learning_rate=0.1,
         scale_pos_weight=scale_pos_weight,
         random_state=23,
         eval_metric='aucpr'
     )
     
+    train_start = time.time()
     model.fit(
         X_train, y_train,
         eval_set=[(X_val, y_val)],
         verbose=False
     )
+    train_time = time.time() - train_start
     
     # Validate.
     y_prob = model.predict_proba(X_val)[:, 1]
@@ -232,7 +372,46 @@ def train_xgboost(X_train, y_train, X_val, y_val):
     metrics = compute_metrics(y_val, y_pred, y_prob)
     print(f'Validation PR-AUC: {metrics["pr_auc"]:.4f}')
     
-    return model
+    return model, metrics, train_time
+
+
+def train_lightgbm(X_train, y_train, X_val, y_val):
+    '''Train LightGBM model.'''
+    
+    if not HAS_LIGHTGBM:
+        return None, None, 0
+    
+    print('Training LightGBM')
+    
+    # Calculate scale_pos_weight for imbalanced data.
+    neg_count = (y_train == 0).sum()
+    pos_count = (y_train == 1).sum()
+    scale_pos_weight = neg_count / pos_count
+    
+    model = lgb.LGBMClassifier(
+        n_estimators=200,
+        max_depth=5,
+        learning_rate=0.1,
+        scale_pos_weight=scale_pos_weight,
+        random_state=23,
+        verbose=-1
+    )
+    
+    train_start = time.time()
+    model.fit(
+        X_train, y_train,
+        eval_set=[(X_val, y_val)],
+    )
+    train_time = time.time() - train_start
+    
+    # Validate.
+    y_prob = model.predict_proba(X_val)[:, 1]
+    y_pred = model.predict(X_val)
+    
+    metrics = compute_metrics(y_val, y_pred, y_prob)
+    print(f'Validation PR-AUC: {metrics["pr_auc"]:.4f}')
+    
+    return model, metrics, train_time
 
 
 def main():
@@ -277,14 +456,15 @@ def main():
     )
 
     # Target feature selection based on feature importance check. 
-    top_features = ['w60_spread_std', 'w300_spread_std', 'w30_spread_std', 'w60_spread_mean', 'w30_spread_mean',
-                    'w60_ob_microprice_mean', 'w900_spread_std', 'w60_ob_depth_imbalance_L1', 'w300_trade_imbalance',
-                    'w30_ob_microprice_mean', 'w30_ob_depth_imbalance_L1', 'w60_return_std', 'w60_volatility_lag1',
-                    'w300_spread_mean', 'w900_price_momentum', 'w60_trade_count', 'w60_tick_rate', 'w60_n_observations',
-                    'w300_price_momentum', 'w60_trade_imbalance', 'w30_volatility_lag1', 'w30_return_std', 'w900_trade_count',
-                    'w900_tick_rate', 'w900_n_observations', 'w30_price_std', 'w300_ob_microprice_mean', 'w30_price_range',
-                    'w60_price_std', 'w300_trade_count'
-                    ]
+    top_features = [
+        'w60_spread_std', 'w300_spread_std', 'w30_spread_std', 'w60_spread_mean', 'w30_spread_mean',
+        'w60_ob_microprice_mean', 'w900_spread_std', 'w60_ob_depth_imbalance_L1', 'w300_trade_imbalance',
+        'w30_ob_microprice_mean', 'w30_ob_depth_imbalance_L1', 'w60_return_std', 'w60_volatility_lag1',
+        'w300_spread_mean', 'w900_price_momentum', 'w60_trade_count', 'w60_tick_rate', 'w60_n_observations',
+        'w300_price_momentum', 'w60_trade_imbalance', 'w30_volatility_lag1', 'w30_return_std', 'w900_trade_count',
+        'w900_tick_rate', 'w900_n_observations', 'w30_price_std', 'w300_ob_microprice_mean', 'w30_price_range',
+        'w60_price_std', 'w300_trade_count'
+    ]
     
     # Get feature columns.
     if args.use_top_features:
@@ -323,11 +503,18 @@ def main():
     # Train and evaluate baseline.
     with mlflow.start_run(run_name=f'baseline_zscore_{session_id}') as run:
         mlflow.set_tag('session_id', session_id)
-        run_id = run.info.run_id
+        mlflow.set_tag('model_type', 'baseline')
+        
+        # Log data info.
+        log_data_info(train_df, val_df, test_df, y_train, y_val, y_test, feature_cols)
 
-        baseline_params = train_baseline(train_df, val_df, feature_cols)
+        baseline_params, val_metrics = train_baseline(train_df, val_df, feature_cols)
         
         if baseline_params:
+            # Log validation metrics.
+            if val_metrics:
+                mlflow.log_metrics({f'val_{k}': v for k, v in val_metrics.items()})
+            
             # Evaluate on test.
             y_pred, y_prob = predict_baseline(test_df, baseline_params)
             metrics = compute_metrics(y_test, y_pred, y_prob)
@@ -341,20 +528,36 @@ def main():
             mlflow.log_params(baseline_params)
             mlflow.log_metrics({f'test_{k}': v for k, v in metrics.items()})
             
-            # Save model.
+            # Log confusion matrix metrics.
+            log_confusion_metrics(y_test, y_pred)
+            
+            # Log visualizations.
+            log_pr_curve(y_test, y_prob, output_dir, 'baseline')
+            log_confusion_matrix(y_test, y_pred, output_dir, 'baseline')
+            
+            # Save and log model.
             baseline_path = output_dir / 'baseline_model.json'
             with open(baseline_path, 'w') as f:
                 json.dump(baseline_params, f)
             mlflow.log_artifact(baseline_path)
+            mlflow.log_artifact(scaler_path)
+            mlflow.log_artifact(features_path)
             
             results['baseline'] = metrics
     
     # Train and evaluate Logistic Regression.
     with mlflow.start_run(run_name=f'logistic_regression_{session_id}') as run:
         mlflow.set_tag('session_id', session_id)
-        run_id = run.info.run_id
+        mlflow.set_tag('model_type', 'logistic_regression')
+        
+        # Log data info.
+        log_data_info(train_df, val_df, test_df, y_train, y_val, y_test, feature_cols)
 
-        lr_model = train_logistic_regression(X_train, y_train, X_val, y_val)
+        lr_model, val_metrics, train_time = train_logistic_regression(X_train, y_train, X_val, y_val)
+        
+        # Log validation metrics.
+        mlflow.log_metrics({f'val_{k}': v for k, v in val_metrics.items()})
+        mlflow.log_metric('training_time_sec', train_time)
         
         # Evaluate on test.
         y_prob = lr_model.predict_proba(X_test)[:, 1]
@@ -370,12 +573,25 @@ def main():
         mlflow.log_params({
             'model_type': 'logistic_regression',
             'class_weight': 'balanced',
-            'n_features': len(feature_cols)
+            'solver': 'saga',
+            'max_iter': 10000,
+            'random_state': 23,
         })
         mlflow.log_metrics({f'test_{k}': v for k, v in metrics.items()})
-        mlflow.sklearn.log_model(lr_model, name='model', input_example=X_train[:5])
         
-        # Save model.
+        # Log confusion matrix metrics.
+        log_confusion_metrics(y_test, y_pred)
+        
+        # Log visualizations.
+        log_pr_curve(y_test, y_prob, output_dir, 'logistic_regression')
+        log_confusion_matrix(y_test, y_pred, output_dir, 'logistic_regression')
+        
+        # Log model and artifacts.
+        mlflow.sklearn.log_model(lr_model, name='model', input_example=X_train[:5].astype('float64'))
+        mlflow.log_artifact(scaler_path)
+        mlflow.log_artifact(features_path)
+        
+        # Save model locally.
         lr_path = output_dir / 'logistic_regression.pkl'
         with open(lr_path, 'wb') as f:
             pickle.dump(lr_model, f)
@@ -386,11 +602,18 @@ def main():
     if HAS_XGBOOST:
         with mlflow.start_run(run_name=f'xgboost_{session_id}') as run:
             mlflow.set_tag('session_id', session_id)
-            run_id = run.info.run_id
+            mlflow.set_tag('model_type', 'xgboost')
+            
+            # Log data info.
+            log_data_info(train_df, val_df, test_df, y_train, y_val, y_test, feature_cols)
 
-            xgb_model = train_xgboost(X_train, y_train, X_val, y_val)
+            xgb_model, val_metrics, train_time = train_xgboost(X_train, y_train, X_val, y_val)
             
             if xgb_model:
+                # Log validation metrics.
+                mlflow.log_metrics({f'val_{k}': v for k, v in val_metrics.items()})
+                mlflow.log_metric('training_time_sec', train_time)
+                
                 # Evaluate on test.
                 y_prob = xgb_model.predict_proba(X_test)[:, 1]
                 y_pred = xgb_model.predict(X_test)
@@ -404,20 +627,94 @@ def main():
                 # Log to MLflow.
                 mlflow.log_params({
                     'model_type': 'xgboost',
-                    'n_estimators': 100,
-                    'max_depth': 4, # started at 6, down to 3, up to 4 - Trying grid search approach.
+                    'n_estimators': 500, # Was at 200
+                    'max_depth': 5,
                     'learning_rate': 0.1,
-                    'n_features': len(feature_cols)
+                    'random_state': 23,
+                    'colsample_bytree': 0.8,
+                    'subsample': 0.8
                 })
                 mlflow.log_metrics({f'test_{k}': v for k, v in metrics.items()})
-                mlflow.sklearn.log_model(xgb_model, name='model', input_example=X_train[:5])
                 
-                # Save model.
+                # Log confusion matrix metrics.
+                log_confusion_metrics(y_test, y_pred)
+                
+                # Log visualizations.
+                log_pr_curve(y_test, y_prob, output_dir, 'xgboost')
+                log_confusion_matrix(y_test, y_pred, output_dir, 'xgboost')
+                
+                # Log feature importance.
+                log_feature_importance(xgb_model, feature_cols, output_dir, 'xgboost')
+                
+                # Log model and artifacts.
+                mlflow.sklearn.log_model(xgb_model, name='model', input_example=X_train[:5].astype('float64'))
+                mlflow.log_artifact(scaler_path)
+                mlflow.log_artifact(features_path)
+                
+                # Save model locally.
                 xgb_path = output_dir / 'xgboost.pkl'
                 with open(xgb_path, 'wb') as f:
                     pickle.dump(xgb_model, f)
                 
                 results['xgboost'] = metrics
+    
+    # Train and evaluate LightGBM.
+    if HAS_LIGHTGBM:
+        with mlflow.start_run(run_name=f'lightgbm_{session_id}') as run:
+            mlflow.set_tag('session_id', session_id)
+            mlflow.set_tag('model_type', 'lightgbm')
+            
+            # Log data info.
+            log_data_info(train_df, val_df, test_df, y_train, y_val, y_test, feature_cols)
+
+            lgb_model, val_metrics, train_time = train_lightgbm(X_train, y_train, X_val, y_val)
+            
+            if lgb_model:
+                # Log validation metrics.
+                mlflow.log_metrics({f'val_{k}': v for k, v in val_metrics.items()})
+                mlflow.log_metric('training_time_sec', train_time)
+                
+                # Evaluate on test.
+                y_prob = lgb_model.predict_proba(X_test)[:, 1]
+                y_pred = lgb_model.predict(X_test)
+                metrics = compute_metrics(y_test, y_pred, y_prob)
+                
+                print(f'\nLightGBM Test Results:')
+                print(f'  PR-AUC: {metrics["pr_auc"]:.4f}')
+                print(f'  ROC-AUC: {metrics["roc_auc"]:.4f}')
+                print(f'  F1: {metrics["f1"]:.4f}')
+                
+                # Log to MLflow.
+                mlflow.log_params({
+                    'model_type': 'lightgbm',
+                    'n_estimators': 200,
+                    'max_depth': 5,
+                    'learning_rate': 0.1,
+                    'random_state': 23,
+                })
+                mlflow.log_metrics({f'test_{k}': v for k, v in metrics.items()})
+                
+                # Log confusion matrix metrics.
+                log_confusion_metrics(y_test, y_pred)
+                
+                # Log visualizations.
+                log_pr_curve(y_test, y_prob, output_dir, 'lightgbm')
+                log_confusion_matrix(y_test, y_pred, output_dir, 'lightgbm')
+                
+                # Log feature importance.
+                log_feature_importance(lgb_model, feature_cols, output_dir, 'lightgbm')
+                
+                # Log model and artifacts.
+                mlflow.sklearn.log_model(lgb_model, name='model', input_example=X_train[:5].astype('float64')) 
+                mlflow.log_artifact(scaler_path)
+                mlflow.log_artifact(features_path)
+                
+                # Save model locally.
+                lgb_path = output_dir / 'lightgbm.pkl'
+                with open(lgb_path, 'wb') as f:
+                    pickle.dump(lgb_model, f)
+                
+                results['lightgbm'] = metrics
     
     # Summary
     print('\n' + '='*60)

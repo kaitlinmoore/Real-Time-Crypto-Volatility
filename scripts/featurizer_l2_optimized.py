@@ -17,20 +17,38 @@ from utilities import load_config, setup_logger
 
 
 class FeatureWindow:
-    '''Manages time-windowed data for feature computation.'''
+    '''Manages time-windowed data for feature computation'''
     
     def __init__(self, window_seconds=60):
         self.window_seconds = window_seconds
-        self.prices = deque()
+        
+        # Price data (synced together)
         self.timestamps = deque()
+        self.prices = deque()
         self.volumes = deque()
+        
+        # Spread data (separate timestamps to avoid desync issues)
+        self.spread_timestamps = deque()
         self.spreads = deque()
-        self.trades = deque()
-        self.trade_timestamps = deque()  # Separate deque for efficient cleanup.
+        
+        # Trade data (durther optimized for O(1) cleanup)
+        self.trade_timestamps = deque()
+        self.trade_sizes = deque()
+        self.trade_sides = deque()
+        
+        # Running totals for O(1) trade feature computation
+        self.total_volume = 0.0
+        self.buy_volume = 0.0
+        self.sell_volume = 0.0
+        
+        # Tick timing (separate for microstructure features)
         self.tick_times = deque()
+        self.tick_diffs = deque()  # Incremental storage of time diffs
+        
+        # Lagged volatility for autoregressive feature
         self.last_volatility = None
 
-        # Orderbook / L2-related state.
+        # Orderbook / L2 data (separate timestamps)
         self.ob_timestamps = deque()
         self.bid_depth_L1 = deque()
         self.ask_depth_L1 = deque()
@@ -46,14 +64,21 @@ class FeatureWindow:
             best_ask = float(msg.get('best_ask', 0))
             volume_24h = float(msg.get('volume_24h', 0))
             
+            # Store price data (always synced).
             self.timestamps.append(timestamp)
-            self.tick_times.append(timestamp)
             self.prices.append(price)
             self.volumes.append(volume_24h)
             
-            # Compute spread.
+            # Store tick time and compute diff incrementally.
+            if self.tick_times:
+                diff = (timestamp - self.tick_times[-1]).total_seconds()
+                self.tick_diffs.append(diff)
+            self.tick_times.append(timestamp)
+            
+            # Store spread separately (only when valid).
             if best_bid > 0 and best_ask > 0:
                 spread = (best_ask - best_bid) / ((best_ask + best_bid) / 2)
+                self.spread_timestamps.append(timestamp)
                 self.spreads.append(spread)
             
             self._cleanup(timestamp)
@@ -67,26 +92,52 @@ class FeatureWindow:
         try:
             timestamp = pd.Timestamp(msg['time'])
             size = float(msg.get('size', 0))
+            side = msg.get('side', 'unknown')
             
             self.trade_timestamps.append(timestamp)
-            self.trades.append({
-                'timestamp': timestamp,
-                'size': size,
-                'side': msg.get('side', 'unknown')
-            })
+            self.trade_sizes.append(size)
+            self.trade_sides.append(side)
+            
+            # Update running totals.
+            self.total_volume += size
+            if side == 'buy':
+                self.buy_volume += size
+            elif side == 'sell':
+                self.sell_volume += size
             
             self._cleanup(timestamp)
             
         except (KeyError, ValueError, TypeError):
             pass
 
+    # Improve use of l2-batch data and order book.
+    # Try both message formats.
     def add_orderbook(self, msg):
         '''Add level2/level2_batch snapshot to window (L2 features).'''
 
         try:
             timestamp = pd.Timestamp(msg['time'])
+            
+            # Try snapshot format first.
             bids = msg.get('bids', [])
             asks = msg.get('asks', [])
+            
+            # Handle Coinbase l2update 'changes' format.
+            if not bids and not asks and 'changes' in msg:
+                changes = msg['changes']
+                # Extract best bid/ask from changes.
+                # Note: This is approximate - changes are deltas, not full book. Not sure if streaming live l2 is feasible.
+                buy_changes = [c for c in changes if c[0] == 'buy']
+                sell_changes = [c for c in changes if c[0] == 'sell']
+                
+                if buy_changes:
+                    # Take highest buy price as best bid.
+                    best_buy = max(buy_changes, key=lambda x: float(x[1]))
+                    bids = [[best_buy[1], best_buy[2]]]
+                if sell_changes:
+                    # Take lowest sell price as best ask.
+                    best_sell = min(sell_changes, key=lambda x: float(x[1]))
+                    asks = [[best_sell[1], best_sell[2]]]
 
             if not bids or not asks:
                 return
@@ -96,9 +147,14 @@ class FeatureWindow:
             best_ask_price = float(asks[0][0])
             best_ask_size = float(asks[0][1])
 
+            # Skip if sizes are zero.
+            if best_bid_size <= 0 or best_ask_size <= 0:
+                return
+
             bid_depth_L1 = best_bid_size
             ask_depth_L1 = best_ask_size
 
+            # Compute microprice (liquidity-weighted mid).
             denom = bid_depth_L1 + ask_depth_L1
             if denom > 0:
                 microprice = (
@@ -119,39 +175,46 @@ class FeatureWindow:
             pass
     
     def _cleanup(self, current_time):
-        '''Remove data outside the window - OPTIMIZED with to O(1).'''
+        '''Remove data outside the window.'''
 
         cutoff = current_time - pd.Timedelta(seconds=self.window_seconds)
         
-        # Clean prices and timestamps.
+        # Clean price data (timestamps, prices, volumes are synced).
         while self.timestamps and self.timestamps[0] < cutoff:
             self.timestamps.popleft()
-            if self.prices:
-                self.prices.popleft()
-            if self.spreads:
-                self.spreads.popleft()
-            if self.volumes:
-                self.volumes.popleft()
+            self.prices.popleft()
+            self.volumes.popleft()
         
-        # Clean tick times.
+        # Clean spread data (separate tracking).
+        while self.spread_timestamps and self.spread_timestamps[0] < cutoff:
+            self.spread_timestamps.popleft()
+            self.spreads.popleft()
+        
+        # Clean tick times and diffs.
         while self.tick_times and self.tick_times[0] < cutoff:
             self.tick_times.popleft()
+            if self.tick_diffs:
+                self.tick_diffs.popleft()
         
-        # Clean trades - OPTIMIZED: use parallel timestamp deque.
+        # Clean trades and update running totals.
         while self.trade_timestamps and self.trade_timestamps[0] < cutoff:
             self.trade_timestamps.popleft()
-            if self.trades:
-                self.trades.popleft()
+            size = self.trade_sizes.popleft()
+            side = self.trade_sides.popleft()
+            
+            # Subtract from running totals.
+            self.total_volume -= size
+            if side == 'buy':
+                self.buy_volume -= size
+            elif side == 'sell':
+                self.sell_volume -= size
 
-        # Clean orderbook snapshots.
+        # Clean orderbook data.
         while self.ob_timestamps and self.ob_timestamps[0] < cutoff:
             self.ob_timestamps.popleft()
-            if self.bid_depth_L1:
-                self.bid_depth_L1.popleft()
-            if self.ask_depth_L1:
-                self.ask_depth_L1.popleft()
-            if self.microprice_vals:
-                self.microprice_vals.popleft()
+            self.bid_depth_L1.popleft()
+            self.ask_depth_L1.popleft()
+            self.microprice_vals.popleft()
     
     def compute_features(self):
         '''Compute features from windowed data.'''
@@ -161,28 +224,27 @@ class FeatureWindow:
         if len(self.prices) < 2:
             return None
         
-        prices = np.array(list(self.prices))
+        prices = np.array(self.prices)
         
-        # Price-based features.
+        # Price-based features
         features['price_mean'] = np.mean(prices)
         features['price_std'] = np.std(prices)
         features['price_min'] = np.min(prices)
         features['price_max'] = np.max(prices)
         features['price_range'] = features['price_max'] - features['price_min']
         
-        # Momentum features.
+        # Momentum features
         features['price_momentum'] = (
             (prices[-1] - prices[0]) / prices[0] if prices[0] != 0 else 0
         )
         
-        # Trend features - OPTIMIZED: manual slope calculation instead of polyfit.
+        # Trend features - polyfit was too expensive computationally and unnecessary.
         if len(prices) > 2:
             n = len(prices)
             x = np.arange(n)
             x_mean = (n - 1) / 2.0
-            y_mean = np.mean(prices)
+            y_mean = features['price_mean']
             
-            # slope = sum((x - x_mean) * (y - y_mean)) / sum((x - x_mean)^2)
             numerator = np.sum((x - x_mean) * (prices - y_mean))
             denominator = np.sum((x - x_mean) ** 2)
             
@@ -199,12 +261,9 @@ class FeatureWindow:
         if len(returns) > 0:
             features['return_mean'] = np.mean(returns)
             features['return_std'] = np.std(returns)
-            features['return_skew'] = (
-                pd.Series(returns).skew() if len(returns) > 2 else 0
-            )
-            features['return_kurt'] = (
-                pd.Series(returns).kurt() if len(returns) > 3 else 0
-            )
+            # Skip skew/kurt for performance (can add back if needed).
+            features['return_skew'] = 0
+            features['return_kurt'] = 0
         else:
             features['return_mean'] = 0
             features['return_std'] = 0
@@ -216,55 +275,44 @@ class FeatureWindow:
             features['volatility_lag1'] = self.last_volatility
         else:
             features['volatility_lag1'] = features['return_std']
-        
         self.last_volatility = features['return_std']
         
-        # Spread features
+        # Spread features (using separate tracking)
         if self.spreads:
-            spreads = np.array(list(self.spreads))
+            spreads = np.array(self.spreads)
             features['spread_mean'] = np.mean(spreads)
             features['spread_std'] = np.std(spreads)
         else:
             features['spread_mean'] = 0
             features['spread_std'] = 0
         
-        # Trade intensity features
-        features['trade_count'] = len(self.trades)
-        if self.trades:
-            total_volume = sum(t['size'] for t in self.trades)
-            features['trade_volume'] = total_volume
-            features['avg_trade_size'] = (
-                total_volume / len(self.trades) if len(self.trades) > 0 else 0
-            )
-            
-            buy_volume = sum(t['size'] for t in self.trades if t['side'] == 'buy')
-            sell_volume = sum(t['size'] for t in self.trades if t['side'] == 'sell')
-            total = buy_volume + sell_volume
-            features['trade_imbalance'] = (
-                (buy_volume - sell_volume) / total if total > 0 else 0
-            )
-        else:
-            features['trade_volume'] = 0
-            features['avg_trade_size'] = 0
-            features['trade_imbalance'] = 0
+        # Trade intensity features - optimized
+        trade_count = len(self.trade_timestamps)
+        features['trade_count'] = trade_count
+        features['trade_volume'] = self.total_volume
+        features['avg_trade_size'] = (
+            self.total_volume / trade_count if trade_count > 0 else 0
+        )
         
-        # Microstructure timing features
-        if len(self.tick_times) > 1:
-            time_diffs = [
-                (self.tick_times[i+1] - self.tick_times[i]).total_seconds()
-                for i in range(len(self.tick_times)-1)
-            ]
-            features['avg_tick_interval'] = np.mean(time_diffs)
-            features['tick_interval_std'] = np.std(time_diffs)
-            features['tick_rate'] = len(self.tick_times) / self.window_seconds
+        total_directional = self.buy_volume + self.sell_volume
+        features['trade_imbalance'] = (
+            (self.buy_volume - self.sell_volume) / total_directional 
+            if total_directional > 0 else 0
+        )
+        
+        # Microstructure timing features - optimized
+        if self.tick_diffs:
+            diffs = np.array(self.tick_diffs)
+            features['avg_tick_interval'] = np.mean(diffs)
+            features['tick_interval_std'] = np.std(diffs)
         else:
             features['avg_tick_interval'] = 0
             features['tick_interval_std'] = 0
-            features['tick_rate'] = 0
         
+        features['tick_rate'] = len(self.tick_times) / self.window_seconds
         features['n_observations'] = len(self.prices)
 
-        # Orderbook / L2-based features
+        # Orderbook / L2 features
         if self.bid_depth_L1 and self.ask_depth_L1:
             bid_depth = np.array(self.bid_depth_L1)
             ask_depth = np.array(self.ask_depth_L1)
@@ -295,24 +343,24 @@ class FeatureWindow:
 
 
 class FeatureComputer:
-    '''Manages feature computation across products and windows.'''
+    '''Manages feature computation across products and windows'''
     
-    def __init__(self, products, window_sizes=[60, 300, 900], compute_every_n=1):
+    def __init__(self, products, window_sizes=None, compute_every_n=1):
         self.products = products
-        self.window_sizes = window_sizes
+        # Default: include 30s window for short-term signal.
+        self.window_sizes = window_sizes or [30, 60, 300, 900]
         self.compute_every_n = compute_every_n
         
         # Create windows for each product and window size.
         self.windows = defaultdict(dict)
         for product in products:
-            for window_size in window_sizes:
+            for window_size in self.window_sizes:
                 self.windows[product][window_size] = FeatureWindow(window_size)
         
         # Counter for batched computation
         self.ticker_counts = defaultdict(int)
         
         self.logger = setup_logger('FeatureComputer')
-        self.feature_buffer = []
         
     def process_message(self, msg):
         '''Process a single message and update windows.'''
@@ -340,7 +388,6 @@ class FeatureComputer:
         if msg_type == 'ticker':
             self.ticker_counts[product_id] += 1
             
-            # Only compute every N tickers.
             if self.ticker_counts[product_id] % self.compute_every_n == 0:
                 return self._compute_features(product_id, msg.get('time'))
         
@@ -348,6 +395,7 @@ class FeatureComputer:
     
     def _compute_features(self, product_id, timestamp):
         '''Compute features for all windows.'''
+
         feature_row = {
             'product_id': product_id,
             'timestamp': timestamp,
@@ -372,6 +420,7 @@ class FeatureComputer:
                 for key, value in features.items():
                     feature_row[prefix + key] = value
         
+        # Only return if we have at least one valid window.
         if len(feature_row) > 8:
             return feature_row
         
@@ -379,10 +428,12 @@ class FeatureComputer:
 
 
 class Featurizer:
-    '''Main featurizer that consumes from Kafka and produces features.'''
+    '''Main featurizer that consumes from Kafka and produces features. Uses temp file batching to improve performance.'''
     
     def __init__(self, topic_in='ticks.raw', topic_out='ticks.features', 
-                 products=None, save_parquet=True, parquet_path='data/processed/features.parquet'):
+                 products=None, save_parquet=True, 
+                 parquet_path='data/processed/features.parquet',
+                 window_sizes=None, compute_every_n=1):
         
         config = load_config()
         
@@ -402,6 +453,7 @@ class Featurizer:
         
         self.logger = setup_logger('Featurizer')
         
+        # Kafka setup
         bootstrap_servers = config['kafka']['bootstrap_servers']
         self.consumer = KafkaConsumer(
             topic_in,
@@ -418,20 +470,30 @@ class Featurizer:
             acks='all'
         )
         
-        self.feature_computer = FeatureComputer(products=products)
+        # Feature computation
+        self.feature_computer = FeatureComputer(
+            products=products,
+            window_sizes=window_sizes,
+            compute_every_n=compute_every_n
+        )
         
+        # Temp file batching - optimized
         self.feature_buffer = []
-        self.buffer_size = 1000
+        self.buffer_size = 5000
+        self.batch_files = []
+        self.run_id = f'{int(time.time() * 1000)}_{id(self)}'
+        self.temp_dir = None
         
         self.logger.info(f'Featurizer initialized for products: {products}')
         self.logger.info(f'Consuming from: {topic_in}')
         self.logger.info(f'Publishing to: {topic_out}')
+        self.logger.info(f'Window sizes: {self.feature_computer.window_sizes}')
         if save_parquet:
             self.logger.info(f'Saving to: {parquet_path}')
     
     def run(self, duration_minutes=None):
         '''Run the featurizer.'''
-        
+
         start_time = time.time()
         message_count = 0
         feature_count = 0
@@ -463,11 +525,11 @@ class Featurizer:
                             feature_count += 1
                             
                             if len(self.feature_buffer) >= self.buffer_size:
-                                self._save_buffer()
+                                self._save_batch()
                         
                         message_count += 1
                         
-                        if message_count % 1000 == 0:
+                        if message_count % 5000 == 0:
                             elapsed = time.time() - start_time
                             rate = message_count / elapsed
                             self.logger.info(
@@ -479,9 +541,8 @@ class Featurizer:
             self.logger.info('Interrupted by user')
         
         finally:
-            if self.feature_buffer:
-                self._save_buffer()
-            
+            # Save remaining buffer and combine all batches.
+            self._finalize_output()
             self.cleanup()
             
             elapsed = time.time() - start_time
@@ -489,24 +550,68 @@ class Featurizer:
             self.logger.info(f'Processed {message_count} messages')
             self.logger.info(f'Generated {feature_count} feature rows')
     
-    def _save_buffer(self):
-        '''Save buffered features to Parquet.'''
+    def _save_batch(self):
+        '''Save current batch to a temp file.'''
+
         if not self.save_parquet or not self.feature_buffer:
             return
         
+        # Create temp directory on first batch.
+        if self.temp_dir is None:
+            self.temp_dir = self.parquet_path.parent / f'.temp_batches_{self.run_id}'
+            self.temp_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Save batch to numbered temp file.
+        batch_file = self.temp_dir / f'batch_{len(self.batch_files):04d}.parquet'
         df = pd.DataFrame(self.feature_buffer)
+        df.to_parquet(batch_file, index=False)
         
-        if self.parquet_path.exists():
-            existing_df = pd.read_parquet(self.parquet_path)
-            df = pd.concat([existing_df, df], ignore_index=True)
+        self.batch_files.append(batch_file)
+        self.logger.debug(f'Saved batch {len(self.batch_files)} ({len(self.feature_buffer)} rows)')
+        self.feature_buffer = []
+    
+    def _finalize_output(self):
+        '''Combine all temp batches into final output file.'''
+
+        if not self.save_parquet:
+            return
         
+        # Save any remaining buffer.
+        if self.feature_buffer:
+            self._save_batch()
+        
+        if not self.batch_files:
+            self.logger.warning('No features to save')
+            return
+        
+        # Combine all batch files.
+        self.logger.info(f'Combining {len(self.batch_files)} batch files...')
+        
+        dfs = []
+        for batch_file in self.batch_files:
+            dfs.append(pd.read_parquet(batch_file))
+        
+        df = pd.concat(dfs, ignore_index=True)
         df.to_parquet(self.parquet_path, index=False)
         
-        self.logger.info(f'Saved {len(self.feature_buffer)} features to {self.parquet_path}')
-        self.feature_buffer = []
+        self.logger.info(f'Saved {len(df)} features to {self.parquet_path}')
+        
+        # Cleanup temp files.
+        for batch_file in self.batch_files:
+            try:
+                batch_file.unlink()
+            except Exception:
+                pass
+        
+        if self.temp_dir and self.temp_dir.exists():
+            try:
+                self.temp_dir.rmdir()
+            except OSError:
+                pass
     
     def cleanup(self):
         '''Cleanup resources.'''
+        
         if self.consumer:
             self.consumer.close()
         if self.producer:
@@ -515,7 +620,7 @@ class Featurizer:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Compute features from raw Kafka stream')
+    parser = argparse.ArgumentParser(description='Compute features from raw Kafka stream.')
     parser.add_argument('--topic-in', type=str, default='ticks.raw',
                        help='Input Kafka topic')
     parser.add_argument('--topic-out', type=str, default='ticks.features',
@@ -524,13 +629,16 @@ def main():
                        help='Run duration in minutes (None for continuous)')
     parser.add_argument('--no-save', action='store_true',
                        help='Do not save to Parquet')
+    parser.add_argument('--compute-every-n', type=int, default=1,
+                       help='Compute features every N ticker messages')
     
     args = parser.parse_args()
     
     featurizer = Featurizer(
         topic_in=args.topic_in,
         topic_out=args.topic_out,
-        save_parquet=not args.no_save
+        save_parquet=not args.no_save,
+        compute_every_n=args.compute_every_n
     )
     
     featurizer.run(duration_minutes=args.duration)

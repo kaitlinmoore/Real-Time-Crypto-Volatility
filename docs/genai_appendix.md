@@ -51,3 +51,7 @@ Verification: I reviewed, tested, changed a lot of the formatting.
 Prompt (summary): "The tutorials I watched on evidently are from an older version. A lot of the API has changed. Can you help me update my attached script to follow the 0.7.16 standards?"
 Used in: generate_evidently_report_update.py
 Verification: I reviewed, tested, and incorporated edits.
+
+Prompt (summary): "Here are two versions of my code. I think I fixed a bug in the first one. Can you compare them and give feedback?"
+Used in: featurizer_l2_optimized.py, add_labels_fix.py
+Verification: I read feedback, cross-referenced with other research, tested, and made some additional tweaks to my edits to omprove performance.

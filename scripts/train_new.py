@@ -372,6 +372,7 @@ def train_xgboost(X_train, y_train, X_val, y_val, config=None):
     print('Training XGBoost')
     
     # Get config or use defaults.
+    cfg = config or {}
     
     # Calculate scale_pos_weight for imbalanced data (fixed division by zero potential issue).
     neg_count = (y_train == 0).sum()

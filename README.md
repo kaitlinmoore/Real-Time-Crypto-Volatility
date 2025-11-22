@@ -143,10 +143,10 @@ Computes windowed features from raw data.
 
 ```bash
 # Standard replay
-python scripts/replay_l2_optimized.py --raw data/raw --out data/processed/features.parquet
+python scripts/replay_fast.py --raw data/raw --out data/processed/features.parquet
 
 # Faster processing (compute every 5th tick)
-python scripts/replay_l2_optimized.py --raw data/raw --out data/processed/features.parquet --compute-every-n 5
+python scripts/replay_fast.py --raw data/raw --out data/processed/features.parquet --compute-every-n 5
 ```
 
 **Feature windows**: 30s, 60s, 300s (5min), 900s (15min)
@@ -160,16 +160,16 @@ python scripts/replay_l2_optimized.py --raw data/raw --out data/processed/featur
 - Order book (depth, imbalance, microprice)
 - Temporal (hour, day of week)
 
-### Target Labeling (`scripts/add_labels_perproduct.py`)
+### Target Labeling (`scripts/add_labels_fix.py`)
 
 Creates binary spike labels with per-product thresholds.
 
 ```bash
 # Default 95th percentile threshold
-python scripts/add_labels_perproduct.py --features data/processed/features.parquet
+python scripts/add_labels_fix.py --features data/processed/features.parquet
 
 # Custom threshold
-python scripts/add_labels_perproduct.py --features data/processed/features.parquet --threshold-percentile 90
+python scripts/add_labels_fix.py --features data/processed/features.parquet --threshold-percentile 90
 ```
 
 ### Data Splitting
@@ -180,7 +180,7 @@ python scripts/split_data.py --features data/processed/features_labeled_perprodu
                              --train-ratio 0.7 --val-ratio 0.15 --test-ratio 0.15
 ```
 
-**Stratified by session** (`scripts/split_stratified.py`):
+**Stratified from All Session** (`scripts/split_stratified.py`):
 ```bash
 python scripts/split_stratified.py --input-dir data/processed/labeled/split \
                                    --sessions "1,2,3,4,5" \
@@ -214,6 +214,7 @@ python scripts/train_new.py --train data/processed/train.parquet \
 - Baseline: Z-score threshold on 60s volatility
 - Logistic Regression: Balanced class weights
 - XGBoost: With scale_pos_weight for imbalance
+- LightGBM: Histogram-based split, leaf-wise growth
 
 ### Hyperparameter Tuning (`scripts/tune.py`)
 
@@ -235,7 +236,7 @@ python scripts/tune.py --model lr --n-splits 5
 ```yaml
 # In docker/compose.yaml
 kafka:
-  image: bitnami/kafka:latest
+  image: apache/kafka:latest
   ports:
     - "9092:9092"
 ```

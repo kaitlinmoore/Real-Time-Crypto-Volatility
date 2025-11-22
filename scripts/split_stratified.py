@@ -1,8 +1,10 @@
 import argparse
+import pandas as pd
 import sys
+
 from pathlib import Path
 
-import pandas as pd
+
 
 
 def split_session_temporally(df, train_ratio=0.7, val_ratio=0.15):
@@ -21,14 +23,24 @@ def split_session_temporally(df, train_ratio=0.7, val_ratio=0.15):
     return train, val, test
 
 
-def load_and_split_session(filepath, session_num, train_ratio, val_ratio, exclude_products=None):
-    '''Load a session file and split it temporally.'''
+def load_and_split_session(input_dir, pattern, session_num, train_ratio, val_ratio, exclude_products=None):
+    '''Load session file(s) matching glob pattern and split temporally.'''
     
-    if not filepath.exists():
-        print(f'Warning: {filepath} not found, skipping')
+    # Format the pattern with session number, then glob for matches.
+    glob_pattern = pattern.format(session_num)
+    matching_files = sorted(input_dir.glob(glob_pattern))
+    
+    if not matching_files:
+        print(f'Warning: No files matching {glob_pattern} in {input_dir}, skipping')
         return None, None, None
     
-    df = pd.read_parquet(filepath)
+    # Load and concatenate all matching files.
+    dfs = []
+    for filepath in matching_files:
+        dfs.append(pd.read_parquet(filepath))
+        print(f'    Loaded: {filepath.name}')
+    
+    df = pd.concat(dfs, ignore_index=True) if len(dfs) > 1 else dfs[0]
     df['session'] = session_num
     
     # Filter out excluded products.
@@ -47,7 +59,7 @@ def load_and_split_session(filepath, session_num, train_ratio, val_ratio, exclud
     # Split temporally.
     train, val, test = split_session_temporally(df, train_ratio, val_ratio)
     
-    print(f'  Session {session_num}: {len(df)} rows (excluded {excluded})')
+    print(f'  Session {session_num}: {len(df)} rows from {len(matching_files)} file(s) (excluded {excluded})')
     print(f'    Train: {len(train)}, Val: {len(val)}, Test: {len(test)}')
     
     return train, val, test
@@ -95,7 +107,7 @@ def main():
     parser.add_argument('--val-ratio', type=float, default=0.15,
                        help='Fraction of each session for validation (default: 0.15)')
     parser.add_argument('--pattern', type=str, default='session_{}_labeled_perproduct.parquet',
-                       help='Filename pattern with {} placeholder for session number')
+                       help='Filename pattern with {} for session number (supports glob wildcards like *)')
     parser.add_argument('--exclude-products', type=str, default=None,
                        help='Comma-separated product IDs to exclude (e.g., USDT-USD)')
     parser.add_argument('--output-suffix', type=str, default='_stratified',
@@ -131,6 +143,7 @@ def main():
         print(f'Excluding products: {exclude_products}')
     
     print(f'Sessions: {sessions}')
+    print(f'Pattern: {args.pattern}')
     print(f'Split ratios: {args.train_ratio:.0%} train, {args.val_ratio:.0%} val, {test_ratio:.0%} test')
     
     # Collect splits from each session.
@@ -140,10 +153,9 @@ def main():
     
     print('\nSplitting sessions...')
     for session_num in sessions:
-        filepath = input_dir / args.pattern.format(session_num)
-        
         train, val, test = load_and_split_session(
-            filepath, session_num, args.train_ratio, args.val_ratio, exclude_products
+            input_dir, args.pattern, session_num, 
+            args.train_ratio, args.val_ratio, exclude_products
         )
         
         if train is not None:

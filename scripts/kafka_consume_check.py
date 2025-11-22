@@ -248,7 +248,7 @@ def main():
         total = len(success_conditions)
         
         for condition, description in success_conditions:
-            status = '✓' if condition else '✗'
+            status = 'PASS' if condition else 'FAIL'
             print(f'{status} {description}')
         
         print(f'\nOverall: {passed}/{total} checks passed')

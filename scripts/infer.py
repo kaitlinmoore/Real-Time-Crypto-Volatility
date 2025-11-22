@@ -1,18 +1,25 @@
 import argparse
 import json
+import numpy as np
+import pandas as pd
 import pickle
 import sys
 import time
+
 from datetime import datetime
 from pathlib import Path
-
-import numpy as np
-import pandas as pd
-from kafka import KafkaConsumer, KafkaProducer
 from sklearn.metrics import average_precision_score, f1_score
 
 sys.path.append(str(Path(__file__).parent.parent))
 from scripts.utilities import load_config, setup_logger
+
+# Fix batch mode crash issue.
+try:
+    from kafka import KafkaConsumer, KafkaProducer
+    HAS_KAFKA = True
+except ImportError:
+    HAS_KAFKA = False
+    print('Warning: kafka-python not installed, realtime mode unavailable')
 
 
 class VolatilityPredictor:
@@ -71,6 +78,11 @@ def run_realtime(predictor, topic_in='ticks.features', topic_out='ticks.predicti
                  duration_minutes=None, output_path=None):
     '''Run real-time inference from Kafka.'''
     
+    if not HAS_KAFKA:
+        print('ERROR: kafka-python is required for realtime mode')
+        print('Install with: pip install kafka-python')
+        return
+    
     config = load_config()
     bootstrap_servers = config['kafka']['bootstrap_servers']
     logger = setup_logger('RealtimeInference')
@@ -101,7 +113,7 @@ def run_realtime(predictor, topic_in='ticks.features', topic_out='ticks.predicti
     prediction_count = 0
     total_latency = 0
     
-    # Buffer for saving predictions.
+    # Buffer for saving predictions
     predictions_buffer = []
     buffer_size = 1000
     
@@ -180,7 +192,7 @@ def run_realtime(predictor, topic_in='ticks.features', topic_out='ticks.predicti
         elapsed = time.time() - start_time
         avg_latency = (total_latency / message_count * 1000) if message_count > 0 else 0
         
-        logger.info(f'\nInference Summary:')
+        logger.info('\nInference Summary:')
         logger.info(f'  Duration: {elapsed:.1f}s')
         logger.info(f'  Messages processed: {message_count}')
         logger.info(f'  Predictions made: {prediction_count}')
@@ -226,10 +238,10 @@ def run_batch(predictor, features_path, output_path):
     df['spike_probability'] = probs
     
     # Calculate metrics.
-    avg_latency = (elapsed / len(df)) * 1000
-    throughput = len(df) / elapsed
+    avg_latency = (elapsed / len(df)) * 1000 if len(df) > 0 else 0
+    throughput = len(df) / elapsed if elapsed > 0 else float('inf')
     
-    logger.info(f'\nBatch Inference Results:')
+    logger.info('\nBatch Inference Results:')
     logger.info(f'  Total time: {elapsed:.2f}s')
     logger.info(f'  Avg latency: {avg_latency:.4f}ms per sample')
     logger.info(f'  Throughput: {throughput:.0f} samples/s')
@@ -240,7 +252,7 @@ def run_batch(predictor, features_path, output_path):
         pr_auc = average_precision_score(y_true, probs)
         f1 = f1_score(y_true, preds)
         
-        logger.info(f'\nEvaluation:')
+        logger.info('\nEvaluation:')
         logger.info(f'  PR-AUC: {pr_auc:.4f}')
         logger.info(f'  F1: {f1:.4f}')
     

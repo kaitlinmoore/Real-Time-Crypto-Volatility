@@ -18,14 +18,14 @@ kafka:
   topics:
     raw: "ticks.raw"
     features: "ticks.features"
-  bootstrap_servers: "localhost:9092"
+  bootstrap_servers: "localhost:9092" # If this becomes a list, don't forget to update featurizer script.
 
 model:
-  volatility_thresholds:
-    BTC-USD: 0.020
-    ETH-USD: 0.025
-    SOL-USD: 0.040
-    USDC-USD: 0.002
+  # volatility_thresholds: # Moved to script args for testing.
+  #   BTC-USD: 0.020
+  #   ETH-USD: 0.025
+  #   SOL-USD: 0.040
+  #   USDC-USD: 0.002
   
   prediction_window_seconds: 60
   

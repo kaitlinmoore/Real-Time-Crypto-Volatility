@@ -8,7 +8,7 @@ import pandas as pd
 def split_session_temporally(df, train_ratio=0.7, val_ratio=0.15):
     '''Split a single session by time into train/val/test.'''
     
-    df = df.sort_values('timestamp')
+    df = df.sort_values('timestamp').reset_index(drop=True)
     n = len(df)
     
     train_end = int(n * train_ratio)
@@ -39,6 +39,11 @@ def load_and_split_session(filepath, session_num, train_ratio, val_ratio, exclud
     else:
         excluded = 0
     
+    # Check if dataframe is empty after filtering.
+    if len(df) == 0:
+        print(f'  Session {session_num}: No data after filtering')
+        return None, None, None
+    
     # Split temporally.
     train, val, test = split_session_temporally(df, train_ratio, val_ratio)
     
@@ -58,14 +63,21 @@ def report_split_stats(df, split_name):
     print(f'\n{split_name}:')
     print(f'  Total rows: {len(df)}')
     print(f'  Sessions: {sorted(df["session"].unique())}')
-    print(f'  Spike rate: {df["target_spike"].mean():.2%}')
+    
+    # Check if target_spike column exists before accessing it.
+    if 'target_spike' in df.columns:
+        print(f'  Spike rate: {df["target_spike"].mean():.2%}')
+    
     print(f'  Time range: {df["timestamp"].min()} to {df["timestamp"].max()}')
     
-    # Per-product breakdown
+    # Per-product breakdown.
     for product in sorted(df['product_id'].unique()):
         product_df = df[df['product_id'] == product]
-        spike_rate = product_df['target_spike'].mean()
-        print(f'  {product}: {len(product_df)} rows, {spike_rate:.2%} spikes')
+        if 'target_spike' in df.columns:
+            spike_rate = product_df['target_spike'].mean()
+            print(f'  {product}: {len(product_df)} rows, {spike_rate:.2%} spikes')
+        else:
+            print(f'  {product}: {len(product_df)} rows')
 
 
 def main():
@@ -74,7 +86,7 @@ def main():
     )
     parser.add_argument('--input-dir', type=str, default='data/processed/labeled/split',
                        help='Directory containing session files')
-    parser.add_argument('--output-dir', type=str, default='data/processed/sesion_split',
+    parser.add_argument('--output-dir', type=str, default='data/processed/session_split',
                        help='Directory for output files')
     parser.add_argument('--sessions', type=str, default='1,2,3,4,5',
                        help='Comma-separated session numbers to include')
@@ -91,6 +103,21 @@ def main():
     
     args = parser.parse_args()
     
+    # Validate ratios.
+    total_ratio = args.train_ratio + args.val_ratio
+    if total_ratio > 1.0:
+        print(f'Error: train_ratio + val_ratio must be <= 1.0 (got {total_ratio})')
+        return 1
+    
+    if args.train_ratio < 0 or args.val_ratio < 0:
+        print('Error: Ratios must be non-negative')
+        return 1
+    
+    test_ratio = 1.0 - total_ratio
+    if test_ratio < 0:
+        print(f'Error: No room left for test set (test_ratio = {test_ratio})')
+        return 1
+    
     input_dir = Path(args.input_dir)
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -104,7 +131,7 @@ def main():
         print(f'Excluding products: {exclude_products}')
     
     print(f'Sessions: {sessions}')
-    print(f'Split ratios: {args.train_ratio:.0%} train, {args.val_ratio:.0%} val, {1-args.train_ratio-args.val_ratio:.0%} test')
+    print(f'Split ratios: {args.train_ratio:.0%} train, {args.val_ratio:.0%} val, {test_ratio:.0%} test')
     
     # Collect splits from each session.
     train_dfs = []
@@ -124,8 +151,13 @@ def main():
             val_dfs.append(val)
             test_dfs.append(test)
     
+    # Check if any data was loaded.
+    if not train_dfs:
+        print('\nError: No session data was loaded. Check input directory and file pattern.')
+        return 1
+    
     # Combine across sessions.
-    train_df = pd.concat(train_dfs, ignore_index=True) if train_dfs else None
+    train_df = pd.concat(train_dfs, ignore_index=True)
     val_df = pd.concat(val_dfs, ignore_index=True) if val_dfs else None
     test_df = pd.concat(test_dfs, ignore_index=True) if test_dfs else None
     
@@ -145,17 +177,17 @@ def main():
     
     suffix = args.output_suffix
     
-    if train_df is not None:
+    if train_df is not None and len(train_df) > 0:
         train_path = output_dir / f'train{suffix}.parquet'
         train_df.to_parquet(train_path, index=False)
         print(f'\nSaved {train_path}')
     
-    if val_df is not None:
+    if val_df is not None and len(val_df) > 0:
         val_path = output_dir / f'val{suffix}.parquet'
         val_df.to_parquet(val_path, index=False)
         print(f'Saved {val_path}')
     
-    if test_df is not None:
+    if test_df is not None and len(test_df) > 0:
         test_path = output_dir / f'test{suffix}.parquet'
         test_df.to_parquet(test_path, index=False)
         print(f'Saved {test_path}')

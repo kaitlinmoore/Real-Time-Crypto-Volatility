@@ -1,16 +1,19 @@
 import argparse
+import pandas as pd
 import sys
+
 from pathlib import Path
 
-import pandas as pd
 
 sys.path.append(str(Path(__file__).parent.parent))
 from scripts.utilities import setup_logger
 
 
-def split_data(df, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15):
-    '''Split data chronologically by timestamp.    '''
-    logger = setup_logger('DataSplitter')
+def split_data(df, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15, logger=None):
+    '''Split data chronologically by timestamp.'''
+    
+    if logger is None:
+        logger = setup_logger('DataSplitter')
     
     # Sort by timestamp.
     df = df.sort_values('timestamp').reset_index(drop=True)
@@ -28,18 +31,24 @@ def split_data(df, train_ratio=0.7, val_ratio=0.15, test_ratio=0.15):
     logger.info(f'Val: {len(val_df)} ({len(val_df)/n:.1%})')
     logger.info(f'Test: {len(test_df)} ({len(test_df)/n:.1%})')
     
-    # Show time ranges.
+    # Show time ranges - now checks for empty.
     logger.info(f'\nTime ranges:')
-    logger.info(f'  Train: {train_df["timestamp"].min()} to {train_df["timestamp"].max()}')
-    logger.info(f'  Val: {val_df["timestamp"].min()} to {val_df["timestamp"].max()}')
-    logger.info(f'  Test: {test_df["timestamp"].min()} to {test_df["timestamp"].max()}')
+    if len(train_df) > 0:
+        logger.info(f'  Train: {train_df["timestamp"].min()} to {train_df["timestamp"].max()}')
+    if len(val_df) > 0:
+        logger.info(f'  Val: {val_df["timestamp"].min()} to {val_df["timestamp"].max()}')
+    if len(test_df) > 0:
+        logger.info(f'  Test: {test_df["timestamp"].min()} to {test_df["timestamp"].max()}')
     
     # Show spike rates per split.
     if 'target_spike' in df.columns:
         logger.info(f'\nSpike rates:')
-        logger.info(f'  Train: {train_df["target_spike"].mean():.2%}')
-        logger.info(f'  Val: {val_df["target_spike"].mean():.2%}')
-        logger.info(f'  Test: {test_df["target_spike"].mean():.2%}')
+        if len(train_df) > 0:
+            logger.info(f'  Train: {train_df["target_spike"].mean():.2%}')
+        if len(val_df) > 0:
+            logger.info(f'  Val: {val_df["target_spike"].mean():.2%}')
+        if len(test_df) > 0:
+            logger.info(f'  Test: {test_df["target_spike"].mean():.2%}')
     
     return train_df, val_df, test_df
 
@@ -56,8 +65,8 @@ def main():
                        help='Validation set ratio (default: 0.15)')
     parser.add_argument('--test-ratio', type=float, default=0.15,
                        help='Test set ratio (default: 0.15)')
-    parser.add_argument('--suffix', type=str, default=None,
-                       help='File suffix to append for sanity')
+    parser.add_argument('--suffix', type=str, default='',
+                       help='File suffix to append (default: empty string)')
     
     args = parser.parse_args()
     
@@ -73,12 +82,13 @@ def main():
     logger.info(f'Loading {args.features}')
     df = pd.read_parquet(args.features)
     
-    # Split data.
+    # Split data - FIXED duplicate log statement issue
     train_df, val_df, test_df = split_data(
         df,
         train_ratio=args.train_ratio,
         val_ratio=args.val_ratio,
-        test_ratio=args.test_ratio
+        test_ratio=args.test_ratio,
+        logger=logger
     )
     
     # Determine output directory.
@@ -90,7 +100,7 @@ def main():
     
     out_dir.mkdir(parents=True, exist_ok=True)
     
-    # Save splits.
+    # Save splits - FIXED awkward file  name issue.
     train_path = out_dir / f'train{args.suffix}.parquet'
     val_path = out_dir / f'val{args.suffix}.parquet'
     test_path = out_dir / f'test{args.suffix}.parquet'
@@ -104,23 +114,24 @@ def main():
     logger.info(f'  {val_path.name}: {len(val_df)} rows')
     logger.info(f'  {test_path.name}: {len(test_df)} rows')
     
-    # Show per-product breakdown.
-    print('\n=== Per-Product Split Summary ===')
-    for product in df['product_id'].unique():
-        train_count = len(train_df[train_df['product_id'] == product])
-        val_count = len(val_df[val_df['product_id'] == product])
-        test_count = len(test_df[test_df['product_id'] == product])
-        
-        print(f'\n{product}:')
-        print(f'  Train: {train_count}')
-        print(f'  Val: {val_count}')
-        print(f'  Test: {test_count}')
-        
-        if 'target_spike' in df.columns:
-            train_spikes = train_df[train_df['product_id'] == product]['target_spike'].sum()
-            val_spikes = val_df[val_df['product_id'] == product]['target_spike'].sum()
-            test_spikes = test_df[test_df['product_id'] == product]['target_spike'].sum()
-            print(f'  Spikes: {train_spikes}/{val_spikes}/{test_spikes}')
+    # Show per-product breakdown - added column confirmation.
+    if 'product_id' in df.columns:
+        print('\n=== Per-Product Split Summary ===')
+        for product in df['product_id'].unique():
+            train_count = len(train_df[train_df['product_id'] == product])
+            val_count = len(val_df[val_df['product_id'] == product])
+            test_count = len(test_df[test_df['product_id'] == product])
+            
+            print(f'\n{product}:')
+            print(f'  Train: {train_count}')
+            print(f'  Val: {val_count}')
+            print(f'  Test: {test_count}')
+            
+            if 'target_spike' in df.columns:
+                train_spikes = train_df[train_df['product_id'] == product]['target_spike'].sum()
+                val_spikes = val_df[val_df['product_id'] == product]['target_spike'].sum()
+                test_spikes = test_df[test_df['product_id'] == product]['target_spike'].sum()
+                print(f'  Spikes: {train_spikes}/{val_spikes}/{test_spikes}')
     
     return 0
 

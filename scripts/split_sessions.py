@@ -1,8 +1,8 @@
 import argparse
-import sys
-from pathlib import Path
-
 import pandas as pd
+import sys
+
+from pathlib import Path
 
 
 def load_and_concatenate(input_dir, session_numbers, pattern='session_{}_labeled_perproduct.parquet', exclude_products=None):
@@ -31,7 +31,12 @@ def load_and_concatenate(input_dir, session_numbers, pattern='session_{}_labeled
     if not dfs:
         return None
     
-    return pd.concat(dfs, ignore_index=True)
+    # Sort by timestamp after concatenation.
+    result = pd.concat(dfs, ignore_index=True)
+    if 'timestamp' in result.columns:
+        result = result.sort_values('timestamp').reset_index(drop=True)
+    
+    return result
 
 
 def report_split_stats(df, split_name):
@@ -44,14 +49,33 @@ def report_split_stats(df, split_name):
     print(f'\n{split_name}:')
     print(f'  Total rows: {len(df)}')
     print(f'  Sessions: {sorted(df["session"].unique())}')
-    print(f'  Spike rate: {df["target_spike"].mean():.2%}')
-    print(f'  Time range: {df["timestamp"].min()} to {df["timestamp"].max()}')
+    
+    # Check for expected columns before accessing them.
+    if 'target_spike' in df.columns:
+        print(f'  Spike rate: {df["target_spike"].mean():.2%}')
+    else:
+        print(f'  Spike rate: N/A (no target_spike column)')
+    
+    if 'timestamp' in df.columns:
+        print(f'  Time range: {df["timestamp"].min()} to {df["timestamp"].max()}')
     
     # Per-product breakdown.
-    for product in sorted(df['product_id'].unique()):
-        product_df = df[df['product_id'] == product]
-        spike_rate = product_df['target_spike'].mean()
-        print(f'  {product}: {len(product_df)} rows, {spike_rate:.2%} spikes')
+    if 'product_id' in df.columns:
+        for product in sorted(df['product_id'].unique()):
+            product_df = df[df['product_id'] == product]
+            if 'target_spike' in df.columns:
+                spike_rate = product_df['target_spike'].mean()
+                print(f'  {product}: {len(product_df)} rows, {spike_rate:.2%} spikes')
+            else:
+                print(f'  {product}: {len(product_df)} rows')
+
+
+def parse_session_list(session_str):
+    '''Parse comma-separated session numbers, handling empty strings.'''
+    
+    if not session_str or not session_str.strip():
+        return []
+    return [int(x.strip()) for x in session_str.split(',') if x.strip()]
 
 
 def main():
@@ -77,10 +101,10 @@ def main():
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Parse session numbers.
-    train_sessions = [int(x.strip()) for x in args.train_sessions.split(',')]
-    val_sessions = [int(x.strip()) for x in args.val_sessions.split(',')]
-    test_sessions = [int(x.strip()) for x in args.test_sessions.split(',')]
+    # Parse session numbers with empty string handling.
+    train_sessions = parse_session_list(args.train_sessions)
+    val_sessions = parse_session_list(args.val_sessions)
+    test_sessions = parse_session_list(args.test_sessions)
     
     # Parse excluded products.
     exclude_products = None

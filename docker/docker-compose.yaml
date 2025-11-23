@@ -1,0 +1,90 @@
+# Kafka
+
+services:
+  kafka:
+    image: apache/kafka:latest
+    container_name: kafka
+    ports:
+      - "9092:9092" # exposed port for Python
+    environment:
+      KAFKA_NODE_ID: 1  # Kafka instance ID
+      KAFKA_PROCESS_ROLES: broker,controller # Can do both in KRaft
+      
+      # Network Config
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT # Unencrypted should be ok for local
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093 # <nodeID>@<HOST>.<PORT>
+      
+      # Replication - Only 1 Broker - figure out if this matters.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      
+      # Performance
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 3 # Starting with 3, not sure how many consumers yet.
+      
+      # Logs
+      KAFKA_LOG_RETENTION_HOURS: 168  # 1 week instead of default 24 hours
+    
+    # Data Persistance
+    volumes:
+      - kafka-data:/var/lib/kafka/data # Windows folder:container folder
+
+# Kafka UI - Added for easier debugging
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8080:8080" # Windows:container
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=local
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092 # fixed assignment
+    depends_on:
+      - kafka
+
+# MLflow
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    container_name: mlflow
+    ports:
+      - "5000:5000" # Windows:container
+    
+    # Start tracking, allow remote access to talk to windows, create expected mlfuns dir.
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow.db --artifacts-destination /mlflow/mlruns --serve-artifacts
+    
+    # Data Persistance
+    volumes:
+      - mlflow-data:/mlflow
+
+# Prediction API  = added in first step of group project (Week 4)
+  api:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    container_name: prediction-api
+    ports:
+      - "8000:8000" # Windows:container
+    environment:
+      - MODEL_PATH=/app/models/artifacts/logistic_regression.pkl
+      - SCALER_PATH=/app/models/artifacts/scaler.pkl
+      - FEATURE_COLS_PATH=/app/models/artifacts/feature_columns.json
+      - API_VERSION=1.0.0
+      - MODEL_VERSION=1.0.0
+    volumes:
+      - ../models/artifacts:/app/models/artifacts:ro
+    healthcheck:
+      test: curl -f http://localhost:8000/health || exit 1
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+# Data Persistance
+volumes:
+  kafka-data:
+  mlflow-data:

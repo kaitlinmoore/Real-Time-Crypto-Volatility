@@ -250,9 +250,15 @@ class FeatureWindow:
         if len(returns) > 0:
             features['return_mean'] = np.mean(returns)
             features['return_std'] = np.std(returns)
-            # Skip skew/kurt for performance
-            features['return_skew'] = 0
-            features['return_kurt'] = 0
+            
+            # Added skew/kurt to see if helpful
+            if len(returns) > 2:
+                features['return_skew'] = float(skew(returns))
+                features['return_kurt'] = float(kurtosis(returns))
+            else:
+                features['return_skew'] = 0
+                features['return_kurt'] = 0
+
         else:
             features['return_mean'] = 0
             features['return_std'] = 0

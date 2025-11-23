@@ -1,0 +1,51 @@
+# Model hyperparameters configuration.
+# Modify these instead of constantly changing training or tuning scripts.
+
+baseline:
+  feature_col: 'w60_return_std'
+  z_thresholds: [1.0, 1.5, 2.0, 2.5, 3.0]
+
+logistic_regression:
+  max_iter: 10000
+  class_weight: 'balanced'
+  solver: 'saga'
+  penalty: 'l2'
+  C: 1.0
+  random_state: 23
+
+xgboost:
+  n_estimators: 200
+  max_depth: 5
+  learning_rate: 0.1
+  min_child_weight: 1
+  subsample: 0.8
+  colsample_bytree: 0.8
+  reg_alpha: 0.0
+  reg_lambda: 1.0
+  random_state: 23
+  eval_metric: 'aucpr'
+
+lightgbm:
+  n_estimators: 200
+  max_depth: 5
+  learning_rate: 0.1
+  min_child_weight: 1
+  subsample: 0.8
+  colsample_bytree: 0.8
+  reg_alpha: 0.0
+  reg_lambda: 1.0
+  random_state: 23
+  verbose: -1
+
+# Regularized XGBoost preset for comparison.
+xgboost_regularized:
+  n_estimators: 100
+  max_depth: 2
+  learning_rate: 0.05
+  min_child_weight: 10
+  subsample: 0.7
+  colsample_bytree: 0.7
+  reg_alpha: 0.1
+  reg_lambda: 1.0
+  random_state: 23
+  eval_metric: 'aucpr'

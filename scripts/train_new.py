@@ -340,65 +340,25 @@ def train_logistic_regression(X_train, y_train, X_val, y_val, config=None):
     # Get config or use defaults.
     cfg = config or {}
     
-    model = LogisticRegression(
-        max_iter=cfg.get('max_iter', 10000),
-        class_weight=cfg.get('class_weight', 'balanced'),
-        solver=cfg.get('solver', 'saga'),
-        penalty=cfg.get('penalty', 'l2'),
-        C=cfg.get('C', 1.0),
-        random_state=cfg.get('random_state', 23)
-    )
+    penalty = cfg.get('penalty', 'l2')
+    
+    model_params = {
+        'max_iter': cfg.get('max_iter', 10000),
+        'class_weight': cfg.get('class_weight', 'balanced'),
+        'solver': cfg.get('solver', 'saga'),
+        'penalty': penalty,
+        'C': cfg.get('C', 1.0),
+        'random_state': cfg.get('random_state', 23)
+    }
+    
+    # Only add l1_ratio if using elasticnet.
+    if penalty == 'elasticnet':
+        model_params['l1_ratio'] = cfg.get('l1_ratio', 0.5)
+    
+    model = LogisticRegression(**model_params)
     
     train_start = time.time()
     model.fit(X_train, y_train)
-    train_time = time.time() - train_start
-    
-    # Validate.
-    y_prob = model.predict_proba(X_val)[:, 1]
-    y_pred = model.predict(X_val)
-    
-    metrics = compute_metrics(y_val, y_pred, y_prob)
-    print(f'Validation PR-AUC: {metrics["pr_auc"]:.4f}')
-    
-    return model, metrics, train_time
-
-
-def train_xgboost(X_train, y_train, X_val, y_val, config=None):
-    '''Train XGBoost model.'''
-    
-    if not HAS_XGBOOST:
-        return None, None, 0
-    
-    print('Training XGBoost')
-    
-    # Get config or use defaults.
-    cfg = config or {}
-    
-    # Calculate scale_pos_weight for imbalanced data (fixed division by zero potential issue).
-    neg_count = (y_train == 0).sum()
-    pos_count = (y_train == 1).sum()
-    scale_pos_weight = neg_count / pos_count if pos_count > 0 else 1.0
-    
-    model = xgb.XGBClassifier(
-        n_estimators=cfg.get('n_estimators', 500),
-        max_depth=cfg.get('max_depth', 5),
-        learning_rate=cfg.get('learning_rate', 0.1),
-        min_child_weight=cfg.get('min_child_weight', 1),
-        subsample=cfg.get('subsample', 0.8),
-        colsample_bytree=cfg.get('colsample_bytree', 0.8),
-        reg_alpha=cfg.get('reg_alpha', 0.0),
-        reg_lambda=cfg.get('reg_lambda', 1.0),
-        scale_pos_weight=scale_pos_weight,
-        random_state=cfg.get('random_state', 23),
-        eval_metric=cfg.get('eval_metric', 'aucpr')
-    )
-    
-    train_start = time.time()
-    model.fit(
-        X_train, y_train,
-        eval_set=[(X_val, y_val)],
-        verbose=False
-    )
     train_time = time.time() - train_start
     
     # Validate.
@@ -531,13 +491,76 @@ def main():
 
     # Top features based on feature importance analysis.
     top_features = [
-        'w60_spread_std', 'w300_spread_std', 'w30_spread_std', 'w60_spread_mean', 'w30_spread_mean',
-        'w60_ob_microprice_mean', 'w900_spread_std', 'w60_ob_depth_imbalance_L1', 'w300_trade_imbalance',
-        'w30_ob_microprice_mean', 'w30_ob_depth_imbalance_L1', 'w60_return_std', 'w60_volatility_lag1',
-        'w300_spread_mean', 'w900_price_momentum', 'w60_trade_count', 'w60_tick_rate', 'w60_n_observations',
-        'w300_price_momentum', 'w60_trade_imbalance', 'w30_volatility_lag1', 'w30_return_std', 'w900_trade_count',
-        'w900_tick_rate', 'w900_n_observations', 'w30_price_std', 'w300_ob_microprice_mean', 'w30_price_range',
-        'w60_price_std', 'w300_trade_count'
+    'w60_return_mean',
+    'w900_tick_rate',
+    'w60_price_trend',
+    'w900_ob_depth_imbalance_L1',
+    'w900_trade_count',
+    'w30_price_momentum',
+    'w60_volatility_lag1',
+    'w900_price_max',
+    'w30_spread_std',
+    'w300_n_observations',
+    'w60_price_range',
+    'w60_return_std',
+    'w30_return_mean',
+    'w30_volatility_lag1',
+    'w300_price_mean',
+    'w60_spread_std',
+    'w900_price_std',
+    'w60_ob_ask_depth_L1_mean',
+    'w30_price_range',
+    'w60_price_std',
+    'hour_sin',
+    'w900_price_range',
+    'w300_spread_std',
+    'w300_tick_interval_std',
+    'w300_price_std',
+    'w300_ob_ask_depth_L1_mean',
+    'w60_price_momentum',
+    'w60_avg_trade_size',
+    'w60_ob_microprice_std',
+    'w30_price_std',
+    'w30_return_skew',
+    'w60_trade_volume',
+    'w300_return_skew',
+    'w900_trade_imbalance',
+    'w300_ob_depth_imbalance_L1',
+    'w900_return_kurt',
+    'w30_return_std',
+    'w900_ob_microprice_mean',
+    'w900_spread_std',
+    'w300_ob_bid_depth_L1_mean',
+    'w900_ob_ask_depth_L1_mean',
+    'w300_price_range',
+    'w300_price_momentum',
+    'hour_cos',
+    'w900_avg_tick_interval',
+    'w900_trade_volume',
+    'w300_return_std',
+    'w60_spread_mean',
+    'w300_avg_trade_size',
+    'w60_return_kurt',
+    'w30_price_trend',
+    'w300_volatility_lag1',
+    'w60_return_skew',
+    'w30_ob_microprice_std',
+    'w300_trade_volume',
+    'w900_ob_microprice_std',
+    'w300_spread_mean',
+    'w60_trade_imbalance',
+    'w30_spread_mean',
+    'w900_spread_mean',
+    'w300_ob_microprice_mean',
+    'w900_price_trend',
+    'w900_price_momentum',
+    'w900_return_std',
+    'w900_volatility_lag1',
+    'w900_n_observations',
+    'w900_tick_interval_std',
+    'w60_price_max',
+    'w300_trade_count',
+    'w60_tick_interval_std',
     ]
     
     # Get feature columns.
@@ -663,6 +686,7 @@ def main():
                 'solver': lr_config.get('solver', 'saga'),
                 'penalty': lr_config.get('penalty', 'l2'),
                 'C': lr_config.get('C', 1.0),
+                'l1_ratio': lr_config.get('l1_ratio', None),
                 'max_iter': lr_config.get('max_iter', 10000),
                 'random_state': lr_config.get('random_state', 23),
             })

@@ -1,0 +1,22 @@
+artifact_path: file:///C:/CMU%20Projects/Operationalizing%20AI/rt_crypto_volatility/mlruns/960079160078124089/models/m-fd11384d70aa4fa2bc4676639bb55aba/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.pkl
+    predict_fn: predict
+    python_version: 3.13.7
+  sklearn:
+    code: null
+    pickled_model: model.pkl
+    serialization_format: cloudpickle
+    sklearn_version: 1.7.1
+mlflow_version: 3.6.0
+model_id: m-fd11384d70aa4fa2bc4676639bb55aba
+model_size_bytes: 120655
+model_uuid: m-fd11384d70aa4fa2bc4676639bb55aba
+prompts: null
+run_id: 77e44dca77584bfcad11342d8279b2d0
+utc_time_created: '2025-11-19 00:30:33.593572'

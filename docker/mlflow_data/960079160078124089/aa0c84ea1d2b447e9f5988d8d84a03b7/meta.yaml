@@ -1,0 +1,14 @@
+artifact_uri: file:///C:/CMU%20Projects/Operationalizing%20AI/rt_crypto_volatility/mlruns/960079160078124089/aa0c84ea1d2b447e9f5988d8d84a03b7/artifacts
+end_time: 1763497726661
+entry_point_name: ''
+experiment_id: '960079160078124089'
+lifecycle_stage: active
+run_id: aa0c84ea1d2b447e9f5988d8d84a03b7
+run_name: logistic_regression
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1763497550814
+status: 3
+tags: []
+user_id: redsk

@@ -1,0 +1,57 @@
+artifact_path: mlflow-artifacts:/24/models/m-0920212de5aa4d3e8f3ce47f0dee957e/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.pkl
+    predict_fn: predict
+    python_version: 3.13.7
+  sklearn:
+    code: null
+    pickled_model: model.pkl
+    serialization_format: cloudpickle
+    sklearn_version: 1.7.1
+is_signature_from_type_hint: false
+mlflow_version: 3.6.0
+model_id: m-0920212de5aa4d3e8f3ce47f0dee957e
+model_size_bytes: 658021
+model_uuid: m-0920212de5aa4d3e8f3ce47f0dee957e
+prompts: null
+run_id: fd8405d1803a47359b9d331ea065d33e
+saved_input_example_info:
+  artifact_path: input_example.json
+  pandas_orient: split
+  serving_input_path: serving_input_example.json
+  type: dataframe
+signature:
+  inputs: '[{"type": "double", "name": "w60_spread_std", "required": true}, {"type":
+    "double", "name": "w300_spread_std", "required": true}, {"type": "double", "name":
+    "w30_spread_std", "required": true}, {"type": "double", "name": "w60_spread_mean",
+    "required": true}, {"type": "double", "name": "w30_spread_mean", "required": true},
+    {"type": "double", "name": "w60_ob_microprice_mean", "required": true}, {"type":
+    "double", "name": "w900_spread_std", "required": true}, {"type": "double", "name":
+    "w60_ob_depth_imbalance_L1", "required": true}, {"type": "double", "name": "w300_trade_imbalance",
+    "required": true}, {"type": "double", "name": "w30_ob_microprice_mean", "required":
+    true}, {"type": "double", "name": "w30_ob_depth_imbalance_L1", "required": true},
+    {"type": "double", "name": "w60_return_std", "required": true}, {"type": "double",
+    "name": "w60_volatility_lag1", "required": true}, {"type": "double", "name": "w300_spread_mean",
+    "required": true}, {"type": "double", "name": "w900_price_momentum", "required":
+    true}, {"type": "double", "name": "w60_trade_count", "required": true}, {"type":
+    "double", "name": "w60_tick_rate", "required": true}, {"type": "double", "name":
+    "w60_n_observations", "required": true}, {"type": "double", "name": "w300_price_momentum",
+    "required": true}, {"type": "double", "name": "w60_trade_imbalance", "required":
+    true}, {"type": "double", "name": "w30_volatility_lag1", "required": true}, {"type":
+    "double", "name": "w30_return_std", "required": true}, {"type": "double", "name":
+    "w900_trade_count", "required": true}, {"type": "double", "name": "w900_tick_rate",
+    "required": true}, {"type": "double", "name": "w900_n_observations", "required":
+    true}, {"type": "double", "name": "w30_price_std", "required": true}, {"type":
+    "double", "name": "w300_ob_microprice_mean", "required": true}, {"type": "double",
+    "name": "w30_price_range", "required": true}, {"type": "double", "name": "w60_price_std",
+    "required": true}, {"type": "double", "name": "w300_trade_count", "required":
+    true}]'
+  outputs: '[{"type": "long", "required": true}]'
+  params: null
+type_hint_from_example: false
+utc_time_created: '2025-11-20 16:11:47.609963'

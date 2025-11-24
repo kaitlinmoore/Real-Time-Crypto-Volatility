@@ -9,19 +9,28 @@ sys.path.append(str(Path(__file__).parent.parent))
 from utilities import setup_logger
 
 
-def compute_forward_volatility(df, product_id, n_periods=6):
-    '''Compute std of the next n_periods returns starting from t+1.'''
+# FIXED CALCULATION
+def compute_forward_volatility(df, product_id, horizon_seconds=60):
+    '''Compute std of returns over the next horizon_seconds.'''
     
     # Filter to specific product and sort by timestamp.
     product_df = df[df['product_id'] == product_id].copy()
     product_df = product_df.sort_values('timestamp').reset_index(drop=True)
+    
+    # Estimate average interval between observations.
+    if len(product_df) > 1:
+        timestamps = pd.to_datetime(product_df['timestamp'])
+        avg_interval = (timestamps.iloc[-1] - timestamps.iloc[0]).total_seconds() / (len(timestamps) - 1)
+        n_periods = max(1, int(horizon_seconds / avg_interval))
+    else:
+        n_periods = 6  # Default fallback.
     
     # Get price series from 60s mean price.
     prices = product_df['w60_price_mean'].values
     returns = np.diff(prices) / prices[:-1]
     returns = np.append(returns, np.nan)
     
-    # Calculate target.
+    # Calculate target: std of returns from t+1 to t+1+n_periods.
     forward_vols = []
     for i in range(len(returns)):
         future_returns = returns[i+1 : i+1+n_periods]

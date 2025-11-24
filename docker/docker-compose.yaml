@@ -5,7 +5,7 @@ services:
     image: apache/kafka:latest
     container_name: kafka
     ports:
-      - "9092:9092" # exposed port for Python
+      - '9092:9092' # exposed port for Python
     environment:
       KAFKA_NODE_ID: 1  # Kafka instance ID
       KAFKA_PROCESS_ROLES: broker,controller # Can do both in KRaft
@@ -39,27 +39,27 @@ services:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
     ports:
-      - "8080:8080" # Windows:container
+      - '8080:8080' # Windows:container
     environment:
       - KAFKA_CLUSTERS_0_NAME=local
       - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092 # fixed assignment
     depends_on:
       - kafka
 
-# MLflow
+# MLflow - UPDATED to use master location
 
   mlflow:
     image: ghcr.io/mlflow/mlflow:latest
     container_name: mlflow
     ports:
-      - "5000:5000" # Windows:container
+      - '5000:5000' # Windows:container
     
-    # Start tracking, allow remote access to talk to windows, create expected mlfuns dir.
-    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri sqlite:///mlflow.db --artifacts-destination /mlflow/mlruns --serve-artifacts
+    # Start tracking, allow remote access to talk to windows, create expected mlruns dir.
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri file:///mlflow/mlruns --default-artifact-root /MLflow_Master/mlruns
     
-    # Data Persistance
+    # Data Persistance - NOW POINTING TO MASTER LOCATION (no spaces in path!)
     volumes:
-      - mlflow-data:/mlflow
+      - C:/MLflow_Master:/mlflow
 
 # Prediction API  = added in first step of group project (Week 4)
   api:
@@ -68,7 +68,7 @@ services:
       dockerfile: Dockerfile
     container_name: prediction-api
     ports:
-      - "8000:8000" # Windows:container
+      - '8000:8000' # Windows:container
     environment:
       - MODEL_PATH=/app/models/artifacts/logistic_regression.pkl
       - SCALER_PATH=/app/models/artifacts/scaler.pkl
@@ -87,4 +87,6 @@ services:
 # Data Persistance
 volumes:
   kafka-data:
-  mlflow-data:
+    external: true
+    name: docker_kafka-data
+  # mlflow-data no longer needed - using direct mount to C:/MLflow_Master

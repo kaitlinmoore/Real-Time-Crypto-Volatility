@@ -1,0 +1,14 @@
+artifact_uri: file:///C:/CMU%20Projects/Operationalizing%20AI/rt_crypto_volatility/mlruns/960079160078124089/7121dea5e8b449cd95702847af429573/artifacts
+end_time: 1763502648102
+entry_point_name: ''
+experiment_id: '960079160078124089'
+lifecycle_stage: active
+run_id: 7121dea5e8b449cd95702847af429573
+run_name: baseline_zscore
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1763502648000
+status: 3
+tags: []
+user_id: redsk

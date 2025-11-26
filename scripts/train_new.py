@@ -370,6 +370,59 @@ def train_logistic_regression(X_train, y_train, X_val, y_val, config=None):
     
     return model, metrics, train_time
 
+def train_xgboost(X_train, y_train, X_val, y_val, config=None):
+    '''Train XGBoost model.'''
+    
+    if not HAS_XGBOOST:
+        return None, None, 0
+    
+    print('Training XGBoost')
+    
+    # Get config or use defaults.
+    cfg = config or {}
+    
+    # Use config value or calculate automatically.
+    scale_pos_weight = cfg.get('scale_pos_weight', None)
+    if scale_pos_weight is None:
+        neg_count = (y_train == 0).sum()
+        pos_count = (y_train == 1).sum()
+        scale_pos_weight = neg_count / pos_count if pos_count > 0 else 1.0
+    
+    model = xgb.XGBClassifier(
+        n_estimators=cfg.get('n_estimators', 500),
+        max_depth=cfg.get('max_depth', 5),
+        learning_rate=cfg.get('learning_rate', 0.1),
+        min_child_weight=cfg.get('min_child_weight', 1),
+        subsample=cfg.get('subsample', 0.8),
+        colsample_bytree=cfg.get('colsample_bytree', 0.8),
+        reg_alpha=cfg.get('reg_alpha', 0.0),
+        reg_lambda=cfg.get('reg_lambda', 1.0),
+        scale_pos_weight=scale_pos_weight,
+        random_state=cfg.get('random_state', 23),
+        eval_metric=cfg.get('eval_metric', 'aucpr')
+    )
+    
+    train_start = time.time()
+    model.fit(
+        X_train, y_train,
+        eval_set=[(X_val, y_val)],
+        verbose=False
+    )
+    train_time = time.time() - train_start
+
+    train_prob = model.predict_proba(X_train)[:, 1]
+    train_pr_auc = average_precision_score(y_train, train_prob)
+    mlflow.log_metric('train_pr_auc', train_pr_auc)
+    
+    # Validate.
+    y_prob = model.predict_proba(X_val)[:, 1]
+    y_pred = model.predict(X_val)
+    
+    metrics = compute_metrics(y_val, y_pred, y_prob)
+    print(f'Validation PR-AUC: {metrics["pr_auc"]:.4f}')
+    
+    return model, metrics, train_time
+
 
 def train_lightgbm(X_train, y_train, X_val, y_val, config=None):
     '''Train LightGBM model.'''
@@ -407,6 +460,10 @@ def train_lightgbm(X_train, y_train, X_val, y_val, config=None):
         eval_set=[(X_val, y_val)],
     )
     train_time = time.time() - train_start
+
+    train_prob = model.predict_proba(X_train)[:, 1]
+    train_pr_auc = average_precision_score(y_train, train_prob)
+    mlflow.log_metric('train_pr_auc', train_pr_auc)
     
     # Validate.
     y_prob = model.predict_proba(X_val)[:, 1]

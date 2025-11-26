@@ -1,0 +1,14 @@
+artifact_uri: /MLflow_Master/mlruns/608282671691311995/64ec58f8b986409c9ddf263e4459d785/artifacts
+end_time: 1764135176120
+entry_point_name: ''
+experiment_id: '608282671691311995'
+lifecycle_stage: active
+run_id: 64ec58f8b986409c9ddf263e4459d785
+run_name: logistic_regression_20251126_003152
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1764135123965
+status: 3
+tags: []
+user_id: redsk

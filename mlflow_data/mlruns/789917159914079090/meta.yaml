@@ -1,0 +1,6 @@
+artifact_location: /MLflow_Master/mlruns/789917159914079090
+creation_time: 1764036014630
+experiment_id: '789917159914079090'
+last_update_time: 1764036014630
+lifecycle_stage: active
+name: v4_xgboost_n300_all_sessions

@@ -1,0 +1,14 @@
+artifact_uri: /MLflow_Master/mlruns/738005671664989536/abd24874bc3e4cb892b5d909d2f679d8/artifacts
+end_time: 1764036330522
+entry_point_name: ''
+experiment_id: '738005671664989536'
+lifecycle_stage: active
+run_id: abd24874bc3e4cb892b5d909d2f679d8
+run_name: xgboost_20251124_210457
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1764036305178
+status: 3
+tags: []
+user_id: redsk

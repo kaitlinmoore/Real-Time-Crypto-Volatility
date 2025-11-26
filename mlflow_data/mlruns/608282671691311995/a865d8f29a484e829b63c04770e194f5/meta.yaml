@@ -1,0 +1,14 @@
+artifact_uri: /MLflow_Master/mlruns/608282671691311995/a865d8f29a484e829b63c04770e194f5/artifacts
+end_time: 1764135123421
+entry_point_name: ''
+experiment_id: '608282671691311995'
+lifecycle_stage: active
+run_id: a865d8f29a484e829b63c04770e194f5
+run_name: baseline_zscore_20251126_003152
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1764135118294
+status: 3
+tags: []
+user_id: redsk

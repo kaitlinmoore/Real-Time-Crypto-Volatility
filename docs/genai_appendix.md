@@ -55,3 +55,7 @@ Verification: I reviewed, tested, and incorporated edits.
 Prompt (summary): "Here are two versions of my code. I think I fixed a bug in the first one. Can you compare them and give feedback?"
 Used in: featurizer_l2_optimized.py, add_labels_fix.py
 Verification: I read feedback, cross-referenced with other research, tested, and made some additional tweaks to my edits to omprove performance.
+
+Prompt (summary): "I have not used FastAPI before. Please check this code for errors, and provide a clear explanation for any that are found."
+Used in: main.py
+Verification: I read feedback, cross-referenced with other research, tested, and edited.

@@ -496,7 +496,7 @@ def main():
     parser.add_argument('--model-config', type=str, default='model_config.yaml',
                        help='Path to model hyperparameters config file')
     parser.add_argument('--xgb-preset', type=str, default=None,
-                       choices=['xgboost', 'xgboost_regularized'],
+                       choices=['xgboost', 'xgboost_regularized', 'xgboost_tuned'],
                        help='Use a specific XGBoost preset from config')
     
     args = parser.parse_args()

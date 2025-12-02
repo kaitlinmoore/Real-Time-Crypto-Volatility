@@ -1,14 +1,3 @@
-#!/usr/bin/env python3
-'''
-Real-time feature computation for volatility prediction.
-
-Consumes raw tick data from Kafka, computes windowed features,
-and publishes to output topic. Optionally saves to Parquet.
-
-Usage:
-    python featurizer.py --topic-in ticks.raw --topic-out ticks.features
-    python featurizer.py --duration 60 --compute-every-n 5
-'''
 
 import argparse
 import json
@@ -28,10 +17,7 @@ from utilities import load_config, setup_logger
 
 
 class Featurizer:
-    '''Main featurizer that consumes from Kafka and produces features.
-    
-    Uses temp file batching to avoid O(n²) parquet saves.
-    '''
+    '''Main featurizer that consumes from Kafka and produces features.'''
     
     def __init__(self, topic_in='ticks.raw', topic_out='ticks.features', 
                  products=None, save_parquet=True, 
@@ -56,7 +42,7 @@ class Featurizer:
         
         self.logger = setup_logger('Featurizer')
         
-        # Kafka setup.
+        # Kafka setup
         bootstrap_servers = config['kafka']['bootstrap_servers']
         self.consumer = KafkaConsumer(
             topic_in,
@@ -73,14 +59,14 @@ class Featurizer:
             acks='all'
         )
         
-        # Feature computation (uses shared module).
+        # Feature computation (uses shared module)
         self.feature_computer = FeatureComputer(
             products=products,
             window_sizes=window_sizes,
             compute_every_n=compute_every_n
         )
         
-        # Temp file batching for O(n) total saves instead of O(n²).
+        # Temp file batching
         self.feature_buffer = []
         self.buffer_size = 5000
         self.batch_files = []
@@ -172,7 +158,7 @@ class Featurizer:
         self.feature_buffer = []
     
     def _finalize_output(self):
-        '''Combine all temp batches into final output file (O(n) total).'''
+        '''Combine all temp batches into final output file.'''
         if not self.save_parquet:
             return
         

@@ -12,34 +12,41 @@ This project builds a complete ML pipeline that:
 5. Tracks experiments with MLflow
 6. Monitors data drift with Evidently
 
-## Quick Start
 
 ### 1. Start Infrastructure
 ```bash
-docker compose -f docker/compose.yaml up -d
+docker compose -f docker/docker-compose.yaml up -d    # Start Kafka + MLflow
 ```
 
 ### 2. Ingest Data
 ```bash
-python scripts/ws_ingest.py --minutes 15 --save-raw
+python scripts/ws_ingest.py --minutes 15 --save-raw    # Ingest data
 ```
 
 ### 3. Generate Features
 ```bash
-python scripts/featurizer_l2_optimized.py --raw data/raw --out data/processed/features.parquet
+python scripts/replay_fast.py --raw data/raw --out data/processed/    # Add features to saved stream outputs.
+```
+
+OR
+
+```bash
+python scripts/featurizer_l2_optimized.py --topic-in ticks.raw --out ticks.features --duration #<duration in mins>    # Add features during live ingestion.
 ```
 
 ### 4. Add Labels and Split
 ```bash
-python scripts/add_labels_perproduct.py --features data/processed/features.parquet
-python scripts/split_data.py --features data/processed/features_labeled_perproduct.parquet
+python scripts/add_labels_FIX.py --features data/processed/ #<file path>    # Add labels.
+
+# Splits each indvidual session file in folder into train/val/test sets to preserve time series info and then aggregates those subgroups.
+python scripts/split_stratified.py --features data/processed/ #<folder path>    # Split into traiing, validation, and test sets.
 ```
 
 ### 5. Train Models
 ```bash
-python scripts/train_new.py --train data/processed/train.parquet \
-                            --val data/processed/val.parquet \
-                            --test data/processed/test.parquet
+python scripts/train_new.py --train data/processed/ #<file path to desired training set> \
+                            --val data/processed/ #<file path to desired validation set> \
+                            --test data/processed/ #<file path to desired test set>
 ```
 
 ### 6. View Results
